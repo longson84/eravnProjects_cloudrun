@@ -1,0 +1,36 @@
+{
+    "name": "eravn-backend",
+    "version": "1.0.0",
+    "description": "eravnProjects Backend - Node.js/Express on Cloud Run",
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch src/app.ts",
+        "build": "tsc",
+        "start": "node dist/app.js",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@google-cloud/firestore": "^7.11.0",
+        "axios": "^1.7.9",
+        "cors": "^2.8.5",
+        "date-fns": "^4.1.0",
+        "express": "^5.1.0",
+        "googleapis": "^146.0.0",
+        "morgan": "^1.10.0",
+        "p-limit": "^6.2.0",
+        "uuid": "^11.1.0",
+        "winston": "^3.17.0"
+    },
+    "devDependencies": {
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.0",
+        "@types/morgan": "^1.9.9",
+        "@types/node": "^22.10.0",
+        "@types/uuid": "^10.0.0",
+        "tsx": "^4.19.0",
+        "typescript": "~5.7.0"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

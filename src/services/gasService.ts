@@ -1,9 +1,10 @@
 // ==========================================
-// GAS Service - google.script.run Wrapper
+// API Client - REST API Wrapper (replaces gasService.ts)
 // ==========================================
-// Wraps google.script.run calls in Promises.
-// Falls back to mock data in local development.
+// Uses Axios to communicate with the Node.js backend.
+// Falls back to mock data when VITE_API_URL is not set.
 
+import axios from 'axios';
 import type { Project, FileLog, AppSettings, ProjectHeartbeat, DashboardData, SyncLogEntry } from '@/types/types';
 import {
     mockProjects,
@@ -12,30 +13,28 @@ import {
     mockSettings,
 } from '@/data/mockData';
 
-/** Check if running inside GAS environment */
-const isGasEnvironment = (): boolean => {
-    return typeof (window as any).google !== 'undefined' &&
-        typeof (window as any).google.script !== 'undefined';
-};
+// ==========================================
+// Axios Instance
+// ==========================================
 
-/** Generic GAS runner that wraps google.script.run in a Promise */
-function gasRun<T>(functionName: string, ...args: any[]): Promise<T> {
-    if (!isGasEnvironment()) {
-        console.warn(`[DEV] GAS not available. Using mock for: ${functionName}`);
-        return getMockResponse<T>(functionName, ...args);
-    }
+const API_URL = import.meta.env.VITE_API_URL || '';
 
-    return new Promise((resolve, reject) => {
-        (window as any).google.script.run
-            .withSuccessHandler((result: T) => resolve(result))
-            .withFailureHandler((error: Error) => reject(error))
-        [functionName](...args);
-    });
-}
+const api = axios.create({
+    baseURL: API_URL,
+    timeout: 60000, // 60 seconds (sync can take a while)
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
 
-/** Mock response handler for local development */
+/** Check if API URL is configured */
+const isApiConfigured = (): boolean => !!API_URL;
+
+// ==========================================
+// Mock Response Handler (for local dev without backend)
+// ==========================================
+
 async function getMockResponse<T>(functionName: string, ...args: any[]): Promise<T> {
-    // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
     const handlers: Record<string, () => any> = {
@@ -48,41 +47,31 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
         runSyncProject: () => ({ success: true, message: `Sync started for project ${args[0]}` }),
         getSettings: () => mockSettings,
         updateSettings: () => ({ ...mockSettings, ...args[0] }),
-        
-        // Logs Mocks
         getSyncLogs: () => {
             const filters = args[0] || { days: 1, status: 'all', search: '' };
             let filtered = [...mockSyncSessions];
-            
-            // Filter by days
             if (filters.days !== -1) {
                 const now = new Date();
                 const cutoff = new Date(now.setDate(now.getDate() - filters.days));
                 filtered = filtered.filter(s => new Date(s.timestamp) >= cutoff);
             }
-
-            // Filter by status
             if (filters.status && filters.status !== 'all') {
                 filtered = filtered.filter(s => s.status === filters.status);
             }
-
-            // Filter by search
             if (filters.search) {
                 const term = filters.search.toLowerCase();
-                filtered = filtered.filter(s => 
-                    s.projectName.toLowerCase().includes(term) || 
+                filtered = filtered.filter(s =>
+                    s.projectName.toLowerCase().includes(term) ||
                     s.runId.toLowerCase().includes(term)
                 );
             }
-
-            // Flatten to SyncLogEntry
             return filtered.map((s): SyncLogEntry => ({
                 sessionId: s.id,
                 projectId: s.projectId,
                 projectName: s.projectName,
                 runId: s.runId,
                 startTime: s.timestamp,
-                endTime: s.timestamp, // Mock
+                endTime: s.timestamp,
                 duration: s.executionDurationSeconds,
                 status: s.status,
                 current: s.current,
@@ -97,35 +86,12 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
             const [sessionId] = args;
             return mockFileLogs.filter(l => l.sessionId === sessionId);
         },
-        continueSync: () => {
-            const [sessionId] = args;
-            const session = mockSyncSessions.find(s => s.id === sessionId);
-            if (session) {
-                // In Continue logic, we don't necessarily flag "retried".
-                // We just trigger a new sync which picks up where left off.
-                // But for mock purposes, let's create a new session that continues this one.
-                const newSession = { 
-                    ...session, 
-                    id: `sess-${Date.now()}`, 
-                    runId: `run-${Date.now()}`, 
-                    timestamp: new Date().toISOString(), 
-                    status: 'success' as const, 
-                    errorMessage: undefined,
-                    triggeredBy: 'manual',
-                    continueId: sessionId // Link to the old session
-                };
-                mockSyncSessions.unshift(newSession);
-                return true;
-            }
-            return false;
-        },
-
+        continueSync: () => true,
         getProjectHeartbeats: () => mockProjects.map(p => ({
             projectId: p.id,
             lastCheckTimestamp: new Date().toISOString(),
             lastStatus: p.lastSyncStatus || 'success',
         })),
-        // Dashboard mocks
         getDashboardData: () => ({
             projectSummary: { totalProjects: mockProjects.length, activeProjects: mockProjects.filter(p => p.status === 'active').length },
             syncProgress: {
@@ -143,78 +109,127 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
             ],
             recentSyncs: mockSyncSessions.slice(0, 10),
         }),
-        resetDatabase: () => {
-            mockProjects.length = 0;
-            mockSyncSessions.length = 0;
-            mockFileLogs.length = 0;
-            return true;
-        },
-        resetProject: () => {
-             const [projectId] = args;
-             const project = mockProjects.find(p => p.id === projectId);
-             if (project) {
-                 // Reset stats
-                 project.lastSyncTimestamp = null;
-                 project.lastSyncStatus = null;
-                 project.filesCount = 0;
-                 project.totalSize = 0;
-                 if (project.stats) {
-                    project.stats.todayFiles = 0;
-                    project.stats.last7DaysFiles = 0;
-                 }
-                 return { success: true };
-             }
-             return { success: false };
-        },
-        testWebhook: () => {
-            const [url] = args;
-            if (!url) throw new Error('URL is required');
-            return true;
-        }
+        resetDatabase: () => true,
+        resetProject: () => ({ success: true }),
+        testWebhook: () => true,
     };
 
     const handler = handlers[functionName];
-    if (handler) {
-        return handler() as T;
-    }
-
-    console.error(`[DEV] No mock handler for: ${functionName}`);
-    throw new Error(`Unknown function: ${functionName}`);
+    if (handler) return handler() as T;
+    throw new Error(`Unknown mock function: ${functionName}`);
 }
 
 // ==========================================
-// Exported API Functions
+// Exported API Functions (same interface as gasService)
 // ==========================================
 
 export const gasService = {
     // Projects
-    getProjects: () => gasRun<Project[]>('getProjects'),
-    getProject: (id: string) => gasRun<Project | null>('getProject', id),
-    createProject: (project: Partial<Project>) => gasRun<Project>('createProject', project),
-    updateProject: (project: Partial<Project>) => gasRun<Project>('updateProject', project),
-    deleteProject: (id: string) => gasRun<{ success: boolean }>('deleteProject', id),
+    getProjects: async (): Promise<Project[]> => {
+        if (!isApiConfigured()) return getMockResponse('getProjects');
+        const { data } = await api.get('/projects');
+        return data;
+    },
+
+    getProject: async (id: string): Promise<Project | null> => {
+        if (!isApiConfigured()) return getMockResponse('getProject', id);
+        const { data } = await api.get(`/projects/${id}`);
+        return data;
+    },
+
+    createProject: async (project: Partial<Project>): Promise<Project> => {
+        if (!isApiConfigured()) return getMockResponse('createProject', project);
+        const { data } = await api.post('/projects', project);
+        return data;
+    },
+
+    updateProject: async (project: Partial<Project>): Promise<Project> => {
+        if (!isApiConfigured()) return getMockResponse('updateProject', project);
+        const { data } = await api.put(`/projects/${project.id}`, project);
+        return data;
+    },
+
+    deleteProject: async (id: string): Promise<{ success: boolean }> => {
+        if (!isApiConfigured()) return getMockResponse('deleteProject', id);
+        const { data } = await api.delete(`/projects/${id}`);
+        return data;
+    },
 
     // Sync
-    runSyncAll: () => gasRun<{ success: boolean; message: string }>('runSyncAll'),
-    runSyncProject: (projectId: string) => gasRun<{ success: boolean; message: string; stats?: { filesCount: number; totalSizeSynced: number; failedCount: number; status: string } }>('runSyncProject', projectId),
+    runSyncAll: async (): Promise<{ success: boolean; message: string }> => {
+        if (!isApiConfigured()) return getMockResponse('runSyncAll');
+        const { data } = await api.post('/sync/all', { triggeredBy: 'manual' });
+        return data;
+    },
+
+    runSyncProject: async (projectId: string): Promise<{ success: boolean; message: string; stats?: { filesCount: number; totalSizeSynced: number; failedCount: number; status: string } }> => {
+        if (!isApiConfigured()) return getMockResponse('runSyncProject', projectId);
+        const { data } = await api.post(`/sync/${projectId}`);
+        return data;
+    },
 
     // Settings
-    getSettings: () => gasRun<AppSettings>('getSettings'),
-    updateSettings: (settings: Partial<AppSettings>) => gasRun<AppSettings>('updateSettings', settings),
+    getSettings: async (): Promise<AppSettings> => {
+        if (!isApiConfigured()) return getMockResponse('getSettings');
+        const { data } = await api.get('/settings');
+        return data;
+    },
+
+    updateSettings: async (settings: Partial<AppSettings>): Promise<AppSettings> => {
+        if (!isApiConfigured()) return getMockResponse('updateSettings', settings);
+        const { data } = await api.put('/settings', settings);
+        return data;
+    },
 
     // Logs
-    getSyncLogs: (filters: { days: number; status?: string; search?: string }) => gasRun<SyncLogEntry[]>('getSyncLogs', filters),
-    getSyncLogDetails: (sessionId: string, projectId: string) => gasRun<FileLog[]>('getSyncLogDetails', sessionId, projectId),
-    continueSync: (sessionId: string, projectId: string) => gasRun<boolean>('continueSync', sessionId, projectId),
+    getSyncLogs: async (filters: { days: number; status?: string; search?: string }): Promise<SyncLogEntry[]> => {
+        if (!isApiConfigured()) return getMockResponse('getSyncLogs', filters);
+        const { data } = await api.get('/logs', { params: filters });
+        return data;
+    },
+
+    getSyncLogDetails: async (sessionId: string, projectId: string): Promise<FileLog[]> => {
+        if (!isApiConfigured()) return getMockResponse('getSyncLogDetails', sessionId);
+        const { data } = await api.get(`/logs/${sessionId}/details`);
+        return data;
+    },
+
+    continueSync: async (sessionId: string, projectId: string): Promise<boolean> => {
+        if (!isApiConfigured()) return getMockResponse('continueSync', sessionId, projectId);
+        const { data } = await api.post(`/logs/${sessionId}/continue`, { projectId });
+        return data.success;
+    },
 
     // Heartbeat
-    getProjectHeartbeats: () => gasRun<ProjectHeartbeat[]>('getProjectHeartbeats'),
+    getProjectHeartbeats: async (): Promise<ProjectHeartbeat[]> => {
+        if (!isApiConfigured()) return getMockResponse('getProjectHeartbeats');
+        const { data } = await api.get('/system/heartbeats');
+        return data;
+    },
 
     // Dashboard
-    getDashboardData: () => gasRun<DashboardData>('getDashboardData'),
+    getDashboardData: async (): Promise<DashboardData> => {
+        if (!isApiConfigured()) return getMockResponse('getDashboardData');
+        const { data } = await api.get('/dashboard');
+        return data;
+    },
 
     // System
-    resetDatabase: () => gasRun<boolean>('resetDatabase'),
-    resetProject: (projectId: string) => gasRun<{ success: boolean }>('resetProject', projectId),
-    testWebhook: (url: string) => gasRun<boolean>('testWebhook', url),
+    resetDatabase: async (): Promise<boolean> => {
+        if (!isApiConfigured()) return getMockResponse('resetDatabase');
+        const { data } = await api.post('/system/reset-database');
+        return data.success;
+    },
+
+    resetProject: async (projectId: string): Promise<{ success: boolean }> => {
+        if (!isApiConfigured()) return getMockResponse('resetProject', projectId);
+        const { data } = await api.post(`/projects/${projectId}/reset`);
+        return data;
+    },
+
+    testWebhook: async (url: string): Promise<boolean> => {
+        if (!isApiConfigured()) return getMockResponse('testWebhook', url);
+        const { data } = await api.post('/settings/test-webhook', { url });
+        return data.success;
+    },
 };

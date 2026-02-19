@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:gas": "npm run build && cp dist/index.html gas/index.html",
-    "deploy:gas": "npm run build:gas && clasp push",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -28,6 +26,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-query": "^5.90.21",
     "@types/google-apps-script": "^2.0.8",
+    "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "firebase": "^12.9.0",
