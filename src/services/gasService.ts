@@ -18,9 +18,11 @@ import {
 // ==========================================
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+// Ensure baseURL ends with /api if using the real backend
+const BASE_URL = API_URL ? (API_URL.endsWith('/') ? `${API_URL}api` : `${API_URL}/api`) : '';
 
 const api = axios.create({
-    baseURL: API_URL,
+    baseURL: BASE_URL,
     timeout: 60000, // 60 seconds (sync can take a while)
     headers: {
         'Content-Type': 'application/json',
@@ -127,109 +129,109 @@ export const gasService = {
     // Projects
     getProjects: async (): Promise<Project[]> => {
         if (!isApiConfigured()) return getMockResponse('getProjects');
-        const { data } = await api.get('/projects');
+        const { data } = await api.get('projects');
         return data;
     },
 
     getProject: async (id: string): Promise<Project | null> => {
         if (!isApiConfigured()) return getMockResponse('getProject', id);
-        const { data } = await api.get(`/projects/${id}`);
+        const { data } = await api.get(`projects/${id}`);
         return data;
     },
 
     createProject: async (project: Partial<Project>): Promise<Project> => {
         if (!isApiConfigured()) return getMockResponse('createProject', project);
-        const { data } = await api.post('/projects', project);
+        const { data } = await api.post('projects', project);
         return data;
     },
 
     updateProject: async (project: Partial<Project>): Promise<Project> => {
         if (!isApiConfigured()) return getMockResponse('updateProject', project);
-        const { data } = await api.put(`/projects/${project.id}`, project);
+        const { data } = await api.put(`projects/${project.id}`, project);
         return data;
     },
 
     deleteProject: async (id: string): Promise<{ success: boolean }> => {
         if (!isApiConfigured()) return getMockResponse('deleteProject', id);
-        const { data } = await api.delete(`/projects/${id}`);
+        const { data } = await api.delete(`projects/${id}`);
         return data;
     },
 
     // Sync
     runSyncAll: async (): Promise<{ success: boolean; message: string }> => {
         if (!isApiConfigured()) return getMockResponse('runSyncAll');
-        const { data } = await api.post('/sync/all', { triggeredBy: 'manual' });
+        const { data } = await api.post('sync/all', { triggeredBy: 'manual' });
         return data;
     },
 
     runSyncProject: async (projectId: string): Promise<{ success: boolean; message: string; stats?: { filesCount: number; totalSizeSynced: number; failedCount: number; status: string } }> => {
         if (!isApiConfigured()) return getMockResponse('runSyncProject', projectId);
-        const { data } = await api.post(`/sync/${projectId}`);
+        const { data } = await api.post(`sync/${projectId}`);
         return data;
     },
 
     // Settings
     getSettings: async (): Promise<AppSettings> => {
         if (!isApiConfigured()) return getMockResponse('getSettings');
-        const { data } = await api.get('/settings');
+        const { data } = await api.get('settings');
         return data;
     },
 
     updateSettings: async (settings: Partial<AppSettings>): Promise<AppSettings> => {
         if (!isApiConfigured()) return getMockResponse('updateSettings', settings);
-        const { data } = await api.put('/settings', settings);
+        const { data } = await api.put('settings', settings);
         return data;
     },
 
     // Logs
     getSyncLogs: async (filters: { days: number; status?: string; search?: string }): Promise<SyncLogEntry[]> => {
         if (!isApiConfigured()) return getMockResponse('getSyncLogs', filters);
-        const { data } = await api.get('/logs', { params: filters });
+        const { data } = await api.get('logs', { params: filters });
         return data;
     },
 
     getSyncLogDetails: async (sessionId: string, projectId: string): Promise<FileLog[]> => {
         if (!isApiConfigured()) return getMockResponse('getSyncLogDetails', sessionId);
-        const { data } = await api.get(`/logs/${sessionId}/details`);
+        const { data } = await api.get(`logs/${sessionId}/details`);
         return data;
     },
 
     continueSync: async (sessionId: string, projectId: string): Promise<boolean> => {
         if (!isApiConfigured()) return getMockResponse('continueSync', sessionId, projectId);
-        const { data } = await api.post(`/logs/${sessionId}/continue`, { projectId });
+        const { data } = await api.post(`logs/${sessionId}/continue`, { projectId });
         return data.success;
     },
 
     // Heartbeat
     getProjectHeartbeats: async (): Promise<ProjectHeartbeat[]> => {
         if (!isApiConfigured()) return getMockResponse('getProjectHeartbeats');
-        const { data } = await api.get('/system/heartbeats');
+        const { data } = await api.get('system/heartbeats');
         return data;
     },
 
     // Dashboard
     getDashboardData: async (): Promise<DashboardData> => {
         if (!isApiConfigured()) return getMockResponse('getDashboardData');
-        const { data } = await api.get('/dashboard');
+        const { data } = await api.get('dashboard');
         return data;
     },
 
     // System
     resetDatabase: async (): Promise<boolean> => {
         if (!isApiConfigured()) return getMockResponse('resetDatabase');
-        const { data } = await api.post('/system/reset-database');
+        const { data } = await api.post('system/reset-database');
         return data.success;
     },
 
     resetProject: async (projectId: string): Promise<{ success: boolean }> => {
         if (!isApiConfigured()) return getMockResponse('resetProject', projectId);
-        const { data } = await api.post(`/projects/${projectId}/reset`);
+        const { data } = await api.post(`projects/${projectId}/reset`);
         return data;
     },
 
     testWebhook: async (url: string): Promise<boolean> => {
         if (!isApiConfigured()) return getMockResponse('testWebhook', url);
-        const { data } = await api.post('/settings/test-webhook', { url });
+        const { data } = await api.post('settings/test-webhook', { url });
         return data.success;
     },
 };

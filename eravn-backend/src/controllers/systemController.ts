@@ -30,4 +30,15 @@ router.get('/heartbeats', async (req: Request, res: Response) => {
     }
 });
 
+// GET /api/system/check-firestore
+router.get('/check-firestore', async (req: Request, res: Response) => {
+    try {
+        const result = await repo.checkFirestoreConnectivity();
+        res.json(result);
+    } catch (e) {
+        logger.error('GET /system/check-firestore failed', { error: (e as Error).message });
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
 export default router;

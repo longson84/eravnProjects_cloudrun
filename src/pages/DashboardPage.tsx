@@ -180,17 +180,17 @@ export function DashboardPage() {
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Lỗi tải dữ liệu Dashboard</AlertTitle>
                     <AlertDescription>
-                        Không thể tải dữ liệu từ Google Apps Script. Vui lòng thử lại sau.
+                        Không thể tải dữ liệu từ Backend. Vui lòng thử lại sau.
                         <pre className="mt-2 text-xs bg-muted p-2 rounded">{error?.message}</pre>
                     </AlertDescription>
                 </Alert>
             </div>
         );
     }
-    
+
     if (!data) {
         return (
-             <div className="flex items-center justify-center h-96">
+            <div className="flex items-center justify-center h-96">
                 <Alert className="max-w-lg">
                     <Activity className="h-4 w-4" />
                     <AlertTitle>Không có dữ liệu</AlertTitle>
@@ -259,7 +259,7 @@ export function DashboardPage() {
                                             <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
                                         </linearGradient>
-                                         <linearGradient id="colorDuration" x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient id="colorDuration" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
                                         </linearGradient>
@@ -324,46 +324,46 @@ export function DashboardPage() {
                             {data.recentSyncs.length > 0 ? [...data.recentSyncs]
                                 .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                                 .map((session: SyncSession) => (
-                                <div
-                                    key={session.id}
-                                    className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {getStatusIcon(session.status)}
-                                        <div>
-                                            <p className="text-sm font-medium">{session.projectName}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {session.filesCount} files • {formatBytes(session.totalSizeSynced)} • {formatDuration(session.executionDurationSeconds)}
-                                            </p>
+                                    <div
+                                        key={session.id}
+                                        className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            {getStatusIcon(session.status)}
+                                            <div>
+                                                <p className="text-sm font-medium">{session.projectName}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {session.filesCount} files • {formatBytes(session.totalSizeSynced)} • {formatDuration(session.executionDurationSeconds)}
+                                                </p>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Badge
-                                            variant={
-                                                session.status === 'success' ? 'success' :
-                                                session.status === 'error' ? 'destructive' : 'warning'
-                                            }
-                                        >
-                                            {session.status === 'success' ? 'Thành công' :
-                                             session.status === 'error' ? 'Lỗi' : 'Gián đoạn'}
-                                        </Badge>
-                                        {session.current && (
+                                        <div className="flex items-center gap-2">
                                             <Badge
                                                 variant={
-                                                    session.current === 'success' ? 'success' :
-                                                    session.current === 'error' ? 'destructive' : 'warning'
+                                                    session.status === 'success' ? 'success' :
+                                                        session.status === 'error' ? 'destructive' : 'warning'
                                                 }
                                             >
-                                                {session.current === 'success' ? 'Thành công' :
-                                                 session.current === 'error' ? 'Lỗi' : 'Gián đoạn'}
+                                                {session.status === 'success' ? 'Thành công' :
+                                                    session.status === 'error' ? 'Lỗi' : 'Gián đoạn'}
                                             </Badge>
-                                        )}
-                                        <span className="text-xs text-muted-foreground">
-                                            {formatTime(session.timestamp)}
-                                        </span>
+                                            {session.current && (
+                                                <Badge
+                                                    variant={
+                                                        session.current === 'success' ? 'success' :
+                                                            session.current === 'error' ? 'destructive' : 'warning'
+                                                    }
+                                                >
+                                                    {session.current === 'success' ? 'Thành công' :
+                                                        session.current === 'error' ? 'Lỗi' : 'Gián đoạn'}
+                                                </Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">
+                                                {formatTime(session.timestamp)}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                            )) : (
+                                )) : (
                                 <div className="text-center text-muted-foreground py-8">
                                     Không có phiên đồng bộ nào gần đây.
                                 </div>

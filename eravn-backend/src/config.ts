@@ -5,6 +5,7 @@
 export const CONFIG = {
     PORT: parseInt(process.env.PORT || '8080', 10),
     GCP_PROJECT_ID: process.env.GCP_PROJECT_ID || '',
+    GCP_DATABASE_ID: process.env.GCP_DATABASE_ID || '(default)',
 
     // Security
     CRON_SECRET: process.env.CRON_SECRET || '',

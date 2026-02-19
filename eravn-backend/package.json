@@ -4,7 +4,7 @@
     "description": "eravnProjects Backend - Node.js/Express on Cloud Run",
     "type": "module",
     "scripts": {
-        "dev": "tsx watch src/app.ts",
+        "dev": "node --env-file=.env --watch --import tsx src/app.ts",
         "build": "tsc",
         "start": "node dist/app.js",
         "typecheck": "tsc --noEmit"

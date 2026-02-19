@@ -13,10 +13,16 @@ import type {
     AppSettings,
     ProjectHeartbeat,
 } from '../types.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // Initialize Firestore (uses ADC on Cloud Run, or GOOGLE_APPLICATION_CREDENTIALS locally)
+const projectId = CONFIG.GCP_PROJECT_ID || undefined;
+const databaseId = CONFIG.GCP_DATABASE_ID || '(default)';
+logger.info(`Initializing Firestore Client - Project: ${projectId || '(auto-detect)'}, Database: ${databaseId}`);
+
 const db = new Firestore({
-    projectId: CONFIG.GCP_PROJECT_ID || undefined,
+    projectId,
+    databaseId,
 });
 
 // ==========================================
@@ -24,14 +30,28 @@ const db = new Firestore({
 // ==========================================
 
 export async function getAllProjects(): Promise<Project[]> {
-    const snapshot = await db.collection('projects').get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+    try {
+        const snapshot = await db.collection('projects').get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+    } catch (e) {
+        logger.error('Error in getAllProjects', {
+            error: (e as Error).message,
+            stack: (e as Error).stack,
+            projectId: CONFIG.GCP_PROJECT_ID
+        });
+        throw e;
+    }
 }
 
 export async function getProjectById(projectId: string): Promise<Project | null> {
-    const doc = await db.collection('projects').doc(projectId).get();
-    if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() } as Project;
+    try {
+        const doc = await db.collection('projects').doc(projectId).get();
+        if (!doc.exists) return null;
+        return { id: doc.id, ...doc.data() } as Project;
+    } catch (e) {
+        logger.error(`Error in getProjectById for ${projectId}`, { error: (e as Error).message });
+        throw e;
+    }
 }
 
 export async function saveProject(project: Project): Promise<Project> {
@@ -61,12 +81,21 @@ export async function saveSyncSession(session: SyncSession): Promise<SyncSession
 }
 
 export async function getSyncSessionsByProject(projectId: string, limit = 50): Promise<SyncSession[]> {
-    const snapshot = await db.collection('syncSessions')
-        .where('projectId', '==', projectId)
-        .orderBy('timestamp', 'desc')
-        .limit(limit)
-        .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SyncSession));
+    try {
+        const snapshot = await db.collection('syncSessions')
+            .where('projectId', '==', projectId)
+            .orderBy('timestamp', 'desc')
+            .limit(limit)
+            .get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SyncSession));
+    } catch (e) {
+        logger.error('Error in getSyncSessionsByProject', {
+            error: (e as Error).message,
+            projectId,
+            note: 'If this is a "failed-precondition" error, you likely need a composite index in Firestore.'
+        });
+        throw e;
+    }
 }
 
 export async function getPendingSyncSessions(projectId: string): Promise<SyncSession[]> {
@@ -93,24 +122,38 @@ export async function getSyncSessions(options: {
     startDate?: Date;
     limit?: number;
 }): Promise<SyncSession[]> {
-    let query = db.collection('syncSessions')
-        .orderBy('timestamp', 'desc')
-        .limit(options.limit || 100);
+    try {
+        let query: any = db.collection('syncSessions');
 
-    if (options.startDate) {
-        query = query.where('timestamp', '>=', options.startDate.toISOString()) as any;
+        if (options.startDate) {
+            query = query.where('timestamp', '>=', options.startDate.toISOString());
+        }
+
+        query = query.orderBy('timestamp', 'desc').limit(options.limit || 100);
+
+        const snapshot = await query.get();
+        return snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as SyncSession));
+    } catch (e) {
+        logger.error('Error in getSyncSessions', {
+            error: (e as Error).message,
+            stack: (e as Error).stack,
+            options
+        });
+        throw e;
     }
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SyncSession));
 }
 
 export async function getRecentSyncSessions(limit = 20): Promise<SyncSession[]> {
-    const snapshot = await db.collection('syncSessions')
-        .orderBy('timestamp', 'desc')
-        .limit(limit)
-        .get();
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SyncSession));
+    try {
+        const snapshot = await db.collection('syncSessions')
+            .orderBy('timestamp', 'desc')
+            .limit(limit)
+            .get();
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SyncSession));
+    } catch (e) {
+        logger.error('Error in getRecentSyncSessions', { error: (e as Error).message });
+        return [];
+    }
 }
 
 // ==========================================
@@ -124,7 +167,7 @@ export async function batchSaveFileLogs(sessionId: string, fileLogs: Partial<Fil
         const batch = db.batch();
 
         for (const log of chunk) {
-            const logId = log.id || require('uuid').v4();
+            const logId = log.id || uuidv4();
             const docRef = db.collection('fileLogs').doc(logId);
             batch.set(docRef, {
                 ...log,
@@ -155,9 +198,14 @@ export async function getSettingsFromDb(): Promise<AppSettings> {
         if (doc.exists) {
             return doc.data() as AppSettings;
         }
+        logger.info('Settings doc "global" not found, using defaults');
         return getDefaultSettings();
     } catch (e) {
-        logger.warn('Error reading settings from Firestore, using defaults', { error: (e as Error).message });
+        logger.warn('Error reading settings from Firestore', {
+            error: (e as Error).message,
+            projectId: CONFIG.GCP_PROJECT_ID,
+            stack: (e as Error).stack
+        });
         return getDefaultSettings();
     }
 }
@@ -233,6 +281,36 @@ async function deleteAllDocumentsInCollection(collectionName: string): Promise<v
         await batch.commit();
         logger.info(`Deleted ${snapshot.size} docs from ${collectionName}`);
         snapshot = await collectionRef.limit(batchSize).get();
+    }
+}
+
+// ==========================================
+// Diagnostics
+// ==========================================
+
+export async function checkFirestoreConnectivity(): Promise<{
+    success: boolean;
+    projectId: string;
+    databaseId?: string;
+    error?: string;
+    collections?: string[];
+}> {
+    try {
+        // Try a simple operation: list collections or get a dummy doc
+        const collections = await db.listCollections();
+        return {
+            success: true,
+            projectId: CONFIG.GCP_PROJECT_ID,
+            databaseId: CONFIG.GCP_DATABASE_ID,
+            collections: collections.map(c => c.id),
+        };
+    } catch (e) {
+        return {
+            success: false,
+            projectId: CONFIG.GCP_PROJECT_ID,
+            databaseId: CONFIG.GCP_DATABASE_ID,
+            error: (e as Error).message,
+        };
     }
 }
 
