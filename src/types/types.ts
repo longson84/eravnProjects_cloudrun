@@ -36,7 +36,7 @@ export interface SyncSession {
     runId: string;
     timestamp: string;
     executionDurationSeconds: number;
-    status: 'success' | 'interrupted' | 'error';
+    status: 'success' | 'interrupted' | 'error' | 'running';
     filesCount: number;
     totalSizeSynced: number; // Size of files synced in this session
     errorMessage?: string;
@@ -53,7 +53,7 @@ export interface SyncLogEntry {
     startTime: string;
     endTime: string;
     duration: number;
-    status: 'success' | 'interrupted' | 'error';
+    status: 'success' | 'interrupted' | 'error' | 'running';
     current?: string;     // Current status
     continueId?: string;  // ID of the session that this session continues
     filesCount: number;

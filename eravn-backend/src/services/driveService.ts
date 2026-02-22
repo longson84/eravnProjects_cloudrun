@@ -3,18 +3,35 @@
 // ==========================================
 // Google Drive API v3 wrapper using googleapis library
 
-import { google, drive_v3 } from 'googleapis';
+import { google } from 'googleapis';
 import { CONFIG } from '../config.js';
 import logger from '../logger.js';
 import { exponentialBackoff } from '../utils.js';
 import type { DriveFile } from '../types.js';
 
-// Initialize Google Drive API with ADC
-const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/drive'],
-});
+// Initialize Google Drive API with OAuth2 Refresh Token
+const clientId = process.env.GOOGLE_CLIENT_ID;
+const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-const drive = google.drive({ version: 'v3', auth });
+if (!clientId || !clientSecret || !refreshToken) {
+    logger.error('MISSING OAuth2 credentials. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN.');
+}
+
+const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+// VERIFICATION: Log the authenticated user email to Cloud Run logs
+(async () => {
+    try {
+        const about = await drive.about.get({ fields: 'user' });
+        logger.info(`AUTHENTICATED AS: ${about.data.user?.emailAddress || 'Unknown'}`);
+    } catch (e: any) {
+        logger.error(`FAILED TO IDENTIFY AUTH USER: ${e.message}`);
+    }
+})();
 
 /**
  * List files modified/created after a given timestamp in a folder
@@ -176,16 +193,30 @@ async function retryDriveCall<T>(fn: () => Promise<T>): Promise<T> {
         } catch (e: any) {
             const message = e?.message || '';
             const status = e?.response?.status || e?.code;
+
+            // Log the error for debugging
             const isRateLimited =
                 status === 429 ||
                 message.includes('429') ||
-                message.includes('Rate Limit') ||
+                message.includes('Rate Limit');
+
+            const isTransientError =
+                isRateLimited ||
+                status === 500 ||
+                status === 502 ||
+                status === 503 ||
+                status === 504 ||
+                message.includes('socket hang up') ||
+                message.includes('ECONNRESET') ||
+                message.includes('ETIMEDOUT') ||
                 message.includes('Empty response');
 
-            if (isRateLimited && attempt < CONFIG.MAX_RETRIES) {
-                logger.warn(`Drive API rate limited. Retry ${attempt + 1}/${CONFIG.MAX_RETRIES}`);
+            if (isTransientError && attempt < CONFIG.MAX_RETRIES) {
+                const reason = isRateLimited ? 'Rate Limited' : 'Transient Network Error';
+                logger.warn(`Drive API ${reason} (${status || message}). Retry ${attempt + 1}/${CONFIG.MAX_RETRIES}`);
                 await exponentialBackoff(attempt);
             } else {
+                // For non-transient errors or max retries reached, throw the actual error
                 throw e;
             }
         }

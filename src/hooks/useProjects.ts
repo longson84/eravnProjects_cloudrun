@@ -7,6 +7,14 @@ export function useProjects() {
         queryKey: ['projects'],
         queryFn: gasService.getProjects,
         staleTime: 1000 * 60 * 5, // 5 minutes
+        // Auto-refresh every 15s when any project is syncing (pending)
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            if (Array.isArray(data) && data.some((p: any) => p.lastSyncStatus === 'pending')) {
+                return 15_000;
+            }
+            return false;
+        },
     });
 }
 
@@ -56,9 +64,12 @@ export function useSyncProject() {
     return useMutation({
         mutationFn: (id: string) => gasService.runSyncProject(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
-            queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
-            queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+            // Small delay to ensure controller has persisted 'pending' status to DB
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['projects'] });
+                queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+            }, 500);
         },
     });
 }
@@ -71,6 +82,20 @@ export function useSyncAllProjects() {
             queryClient.invalidateQueries({ queryKey: ['projects'] });
             queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
             queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+        },
+    });
+}
+
+export function useStopSync() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (projectId: string) => gasService.stopSync(projectId),
+        onSuccess: () => {
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ['projects'] });
+                queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+            }, 1000);
         },
     });
 }

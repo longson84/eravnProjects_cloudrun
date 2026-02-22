@@ -22,7 +22,8 @@ import {
     LayoutGrid,
     List,
     Calendar,
-    CalendarDays
+    CalendarDays,
+    Square
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,21 +56,22 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { Project } from '@/types/types';
-import { 
-    useProjects, 
-    useCreateProject, 
-    useUpdateProject, 
-    useDeleteProject, 
-    useSyncProject, 
-    useSyncAllProjects, 
-    useResetProject 
+import {
+    useProjects,
+    useCreateProject,
+    useUpdateProject,
+    useDeleteProject,
+    useSyncProject,
+    useSyncAllProjects,
+    useResetProject,
+    useStopSync
 } from '@/hooks/useProjects';
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings';
 
 export function ProjectsPage() {
     const { data: projects = [], isLoading: isProjectsLoading } = useProjects();
     const { data: settings } = useSettings();
-    
+
     const createProjectMutation = useCreateProject();
     const updateProjectMutation = useUpdateProject();
     const deleteProjectMutation = useDeleteProject();
@@ -77,12 +79,13 @@ export function ProjectsPage() {
     const syncAllMutation = useSyncAllProjects();
     const resetProjectMutation = useResetProject();
     const updateSettingsMutation = useUpdateSettings();
+    const stopSyncMutation = useStopSync();
 
     const [search, setSearch] = useState('');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [syncingId, setSyncingId] = useState<string | null>(null);
-    
+
     // View mode state
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const navigate = useNavigate();
@@ -119,7 +122,7 @@ export function ProjectsPage() {
                 console.error("Failed to disable auto schedule:", error);
             }
         }
-        
+
         await action();
     };
 
@@ -142,7 +145,7 @@ export function ProjectsPage() {
         (p) =>
             !p.isDeleted &&
             (p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.description.toLowerCase().includes(search.toLowerCase()))
+                p.description.toLowerCase().includes(search.toLowerCase()))
     );
 
     const extractFolderId = (link: string): string => {
@@ -155,10 +158,10 @@ export function ProjectsPage() {
     };
 
     const resetForm = () => {
-        setFormData({ 
-            name: '', 
-            description: '', 
-            sourceFolderLink: '', 
+        setFormData({
+            name: '',
+            description: '',
+            sourceFolderLink: '',
             destFolderLink: '',
             syncStartDate: new Date().toISOString().split('T')[0]
         });
@@ -241,13 +244,12 @@ export function ProjectsPage() {
     const handleSync = async (projectId: string) => {
         setSyncingId(projectId);
         try {
-            const result = await syncProjectMutation.mutateAsync(projectId);
-            
+            await syncProjectMutation.mutateAsync(projectId);
+
             setSyncResult({
                 open: true,
-                success: result.success,
-                message: result.message,
-                stats: result.stats
+                success: true,
+                message: 'Tiến trình sync đã bắt đầu. Bạn có thể đóng cửa sổ này và theo dõi tiến trình ở Logs.',
             });
         } catch (e) {
             setSyncResult({
@@ -257,6 +259,15 @@ export function ProjectsPage() {
             });
         } finally {
             setSyncingId(null);
+        }
+    };
+
+    const handleStopSync = async (projectId: string) => {
+        if (!confirm('Bạn có chắc muốn dừng tiến trình sync này? Tiến trình sẽ dừng an toàn sau khi hoàn tất file hiện tại.')) return;
+        try {
+            await stopSyncMutation.mutateAsync(projectId);
+        } catch (e) {
+            console.error('Stop sync failed:', e);
         }
     };
 
@@ -320,22 +331,22 @@ export function ProjectsPage() {
                         Quản lý các cặp thư mục đồng bộ Source → Destination
                     </p>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                     {/* View Mode Toggle */}
                     <div className="flex items-center bg-muted rounded-md p-1 border">
-                        <Button 
-                            variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
-                            size="icon" 
+                        <Button
+                            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                            size="icon"
                             className="h-8 w-8"
                             onClick={() => handleViewModeChange('grid')}
                             title="Dạng lưới"
                         >
                             <LayoutGrid className="w-4 h-4" />
                         </Button>
-                        <Button 
-                            variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
-                            size="icon" 
+                        <Button
+                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                            size="icon"
                             className="h-8 w-8"
                             onClick={() => handleViewModeChange('list')}
                             title="Dạng danh sách"
@@ -511,7 +522,7 @@ export function ProjectsPage() {
                         <Card key={project.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-200">
                             {/* Status indicator stripe */}
                             <div className={`absolute top-0 left-0 right-0 h-1 ${project.status === 'active' ? 'bg-emerald-500' :
-                                    project.status === 'error' ? 'bg-red-500' : 'bg-amber-500'
+                                project.status === 'error' ? 'bg-red-500' : 'bg-amber-500'
                                 }`} />
 
                             <CardHeader className="pb-3">
@@ -551,7 +562,7 @@ export function ProjectsPage() {
                                             <ExternalLink className="w-3 h-3 shrink-0" />
                                         </a>
                                     </div>
-                                    
+
                                     {project.syncStartDate && (
                                         <div className="flex items-center text-xs pt-1">
                                             <span className="text-muted-foreground w-16 shrink-0">Sync từ:</span>
@@ -562,7 +573,7 @@ export function ProjectsPage() {
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 <Separator />
 
                                 {/* Stats */}
@@ -583,16 +594,17 @@ export function ProjectsPage() {
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-muted-foreground">Kết quả lần sync gần nhất:</span>
-                                        <span className={`font-medium ${
-                                            project.lastSyncStatus === 'success' ? 'text-green-600' : 
-                                            project.lastSyncStatus === 'error' ? 'text-destructive' : 
-                                            project.lastSyncStatus === 'interrupted' ? 'text-orange-500' : ''
-                                        }`}>
+                                        <span className={`font-medium ${project.lastSyncStatus === 'success' ? 'text-green-600' :
+                                            project.lastSyncStatus === 'error' ? 'text-destructive' :
+                                                project.lastSyncStatus === 'interrupted' ? 'text-orange-500' :
+                                                    project.lastSyncStatus === 'pending' ? 'text-blue-500' : ''
+                                            }`}>
                                             {
                                                 project.lastSyncStatus === 'success' ? 'Thành công' :
-                                                project.lastSyncStatus === 'error' ? 'Lỗi' :
-                                                project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' : 
-                                                project.lastSyncStatus || '-'
+                                                    project.lastSyncStatus === 'error' ? 'Lỗi' :
+                                                        project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' :
+                                                            project.lastSyncStatus === 'pending' ? 'Đang sync...' :
+                                                                project.lastSyncStatus || '-'
                                             }
                                         </span>
                                     </div>
@@ -604,7 +616,7 @@ export function ProjectsPage() {
                                         <span className="text-muted-foreground">Lần sync tiếp theo sẽ từ:</span>
                                         <span>{formatDate(project.nextSyncTimestamp || null)}</span>
                                     </div>
-                                    
+
                                 </div>
 
                                 {/* Actions */}
@@ -614,7 +626,7 @@ export function ProjectsPage() {
                                         size="sm"
                                         className="flex-1 gap-1"
                                         onClick={() => handleManualSyncConfirmation(() => handleSync(project.id))}
-                                        disabled={syncingId === project.id || project.status === 'paused'}
+                                        disabled={syncingId === project.id || project.status === 'paused' || project.lastSyncStatus === 'pending'}
                                     >
                                         {syncingId === project.id ? (
                                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -623,11 +635,28 @@ export function ProjectsPage() {
                                         )}
                                         Sync
                                     </Button>
+                                    {project.lastSyncStatus === 'pending' && (
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="gap-1"
+                                            onClick={() => handleStopSync(project.id)}
+                                            disabled={stopSyncMutation.isPending}
+                                        >
+                                            {stopSyncMutation.isPending ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : (
+                                                <Square className="w-3.5 h-3.5" />
+                                            )}
+                                            Dừng
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleToggleStatus(project)}
                                         title={project.status === 'active' ? 'Tạm dừng' : 'Kích hoạt'}
+                                        disabled={project.lastSyncStatus === 'pending'}
                                     >
                                         {project.status === 'active' ? (
                                             <Pause className="w-3.5 h-3.5" />
@@ -640,6 +669,7 @@ export function ProjectsPage() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleOpenEdit(project)}
+                                        disabled={project.lastSyncStatus === 'pending'}
                                     >
                                         <Pencil className="w-3.5 h-3.5" />
                                         Edit
@@ -649,6 +679,7 @@ export function ProjectsPage() {
                                         size="sm"
                                         onClick={() => handleReset(project.id)}
                                         title="Reset lịch sử sync"
+                                        disabled={project.lastSyncStatus === 'pending'}
                                     >
                                         <RotateCcw className="w-3.5 h-3.5" />
                                         Reset
@@ -658,6 +689,7 @@ export function ProjectsPage() {
                                         size="sm"
                                         onClick={() => handleDelete(project.id)}
                                         className="text-destructive hover:text-destructive"
+                                        disabled={project.lastSyncStatus === 'pending'}
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                     </Button>
@@ -722,16 +754,17 @@ export function ProjectsPage() {
                                         {formatDate(project.lastSyncTimestamp)}
                                     </TableCell>
                                     <TableCell className="text-xs whitespace-nowrap">
-                                        <span className={`font-medium ${
-                                            project.lastSyncStatus === 'success' ? 'text-green-600' : 
-                                            project.lastSyncStatus === 'error' ? 'text-destructive' : 
-                                            project.lastSyncStatus === 'interrupted' ? 'text-orange-500' : ''
-                                        }`}>
+                                        <span className={`font-medium ${project.lastSyncStatus === 'success' ? 'text-green-600' :
+                                            project.lastSyncStatus === 'error' ? 'text-destructive' :
+                                                project.lastSyncStatus === 'interrupted' ? 'text-orange-500' :
+                                                    project.lastSyncStatus === 'pending' ? 'text-blue-500' : ''
+                                            }`}>
                                             {
                                                 project.lastSyncStatus === 'success' ? 'Thành công' :
-                                                project.lastSyncStatus === 'error' ? 'Lỗi' :
-                                                project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' : 
-                                                project.lastSyncStatus || '-'
+                                                    project.lastSyncStatus === 'error' ? 'Lỗi' :
+                                                        project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' :
+                                                            project.lastSyncStatus === 'pending' ? 'Đang sync...' :
+                                                                project.lastSyncStatus || '-'
                                             }
                                         </span>
                                     </TableCell>
@@ -748,7 +781,7 @@ export function ProjectsPage() {
                                                 size="icon"
                                                 className="h-8 w-8"
                                                 onClick={() => handleManualSyncConfirmation(() => handleSync(project.id))}
-                                                disabled={syncingId === project.id || project.status === 'paused'}
+                                                disabled={syncingId === project.id || project.status === 'paused' || project.lastSyncStatus === 'pending'}
                                                 title="Sync"
                                             >
                                                 {syncingId === project.id ? (
@@ -757,12 +790,29 @@ export function ProjectsPage() {
                                                     <RefreshCw className="w-4 h-4" />
                                                 )}
                                             </Button>
+                                            {project.lastSyncStatus === 'pending' && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                                    onClick={() => handleStopSync(project.id)}
+                                                    disabled={stopSyncMutation.isPending}
+                                                    title="Dừng Sync"
+                                                >
+                                                    {stopSyncMutation.isPending ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <Square className="w-4 h-4" />
+                                                    )}
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
                                                 className="h-8 w-8"
                                                 onClick={() => handleOpenEdit(project)}
                                                 title="Chỉnh sửa"
+                                                disabled={project.lastSyncStatus === 'pending'}
                                             >
                                                 <Pencil className="w-4 h-4" />
                                             </Button>
@@ -772,6 +822,7 @@ export function ProjectsPage() {
                                                 className="h-8 w-8"
                                                 onClick={() => handleReset(project.id)}
                                                 title="Reset lịch sử sync"
+                                                disabled={project.lastSyncStatus === 'pending'}
                                             >
                                                 <RotateCcw className="w-4 h-4" />
                                             </Button>
@@ -781,6 +832,7 @@ export function ProjectsPage() {
                                                 className="h-8 w-8 text-destructive hover:text-destructive"
                                                 onClick={() => handleDelete(project.id)}
                                                 title="Xóa"
+                                                disabled={project.lastSyncStatus === 'pending'}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>

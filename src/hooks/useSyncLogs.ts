@@ -8,15 +8,25 @@ export function useSyncLogs(filters: SyncLogFilters) {
         queryFn: () => gasService.getSyncLogs(filters),
         staleTime: 60 * 1000, // 1 minute
         placeholderData: keepPreviousData,
+        // Auto-refresh every 15s when there are running sessions
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            if (Array.isArray(data) && data.some((s: any) => s.status === 'running')) {
+                return 15_000;
+            }
+            return false;
+        },
     });
 }
 
-export function useSyncLogDetails(sessionId: string, projectId: string, enabled: boolean) {
+export function useSyncLogDetails(sessionId: string, projectId: string, enabled: boolean, sessionStatus?: string) {
     return useQuery({
         queryKey: ['syncLogDetails', sessionId, projectId],
         queryFn: () => gasService.getSyncLogDetails(sessionId, projectId),
         enabled,
-        staleTime: 5 * 60 * 1000, // 5 minutes
+        staleTime: sessionStatus === 'running' ? 0 : 5 * 60 * 1000, // No stale when running
+        // Auto-refresh every 15s when session is running
+        refetchInterval: enabled && sessionStatus === 'running' ? 15_000 : false,
     });
 }
 

@@ -16,7 +16,7 @@ export interface Project {
     lastSyncTimestamp: string | null;
     lastSuccessSyncTimestamp?: string | null;
     nextSyncTimestamp?: string | null;
-    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'pending' | null;
+    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'pending' | 'running' | null;
     filesCount: number;
     totalSize: number;
     createdAt: string;
@@ -37,7 +37,7 @@ export interface SyncSession {
     runId: string;
     timestamp: string;
     executionDurationSeconds: number;
-    status: 'success' | 'interrupted' | 'error' | 'warning';
+    status: 'success' | 'interrupted' | 'error' | 'warning' | 'running';
     current?: string;
     filesCount: number;
     failedFilesCount?: number;
@@ -57,7 +57,7 @@ export interface SyncLogEntry {
     startTime: string;
     endTime: string;
     duration: number;
-    status: 'success' | 'interrupted' | 'error';
+    status: 'success' | 'interrupted' | 'error' | 'running';
     current?: string;
     continueId?: string;
     filesCount: number;
@@ -75,6 +75,7 @@ export interface FileLog {
     sourceLink: string;
     destLink: string;
     sourcePath: string;
+    sourceFileId?: string;
     createdDate: string;
     modifiedDate: string;
     fileSize?: number;

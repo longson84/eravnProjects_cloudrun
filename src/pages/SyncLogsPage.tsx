@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ScrollText, Search, Filter, ChevronDown, ChevronRight, FileText, CheckCircle2, XCircle, Timer, Clock, Loader2, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ScrollText, Search, Filter, ChevronDown, ChevronRight, FileText, CheckCircle2, XCircle, Timer, Clock, Loader2, RefreshCw, Square } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useSyncLogs, useSyncLogDetails, useContinueSync } from '@/hooks/useSyncLogs';
+import { useStopSync } from '@/hooks/useProjects';
 import type { SyncLogEntry } from '@/types/types';
 
 const formatBytes = (bytes: number) => {
@@ -23,7 +24,8 @@ export function SyncLogsPage() {
     const [daysFilter, setDaysFilter] = useState('1');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
-    const [expandedSession, setExpandedSession] = useState<{sessionId: string, projectId: string} | null>(null);
+    const [expandedSession, setExpandedSession] = useState<{ sessionId: string, projectId: string } | null>(null);
+    const [continuedSessions, setContinuedSessions] = useState<Set<string>>(new Set());
 
     const { data: sessions = [], isLoading } = useSyncLogs({
         days: parseInt(daysFilter),
@@ -31,13 +33,20 @@ export function SyncLogsPage() {
         search
     });
 
+    // Find the expanded session's status for auto-refresh
+    const expandedSessionStatus = sessions.find(
+        s => s.sessionId === expandedSession?.sessionId && s.projectId === expandedSession?.projectId
+    )?.status;
+
     const { data: fileLogs, isLoading: loadingDetails } = useSyncLogDetails(
-        expandedSession?.sessionId || '', 
+        expandedSession?.sessionId || '',
         expandedSession?.projectId || '',
-        !!expandedSession
+        !!expandedSession,
+        expandedSessionStatus
     );
 
     const continueMutation = useContinueSync();
+    const stopMutation = useStopSync();
 
     const handleExpand = (sessionId: string, projectId: string) => {
         if (expandedSession?.sessionId === sessionId && expandedSession?.projectId === projectId) {
@@ -49,8 +58,14 @@ export function SyncLogsPage() {
 
     const handleContinue = (e: React.MouseEvent, session: SyncLogEntry) => {
         e.stopPropagation();
-        // Allow continue even if already continued (just starts a new run)
+        setContinuedSessions(prev => new Set(prev).add(session.sessionId));
         continueMutation.mutate({ sessionId: session.sessionId, projectId: session.projectId });
+    };
+
+    const handleStop = (e: React.MouseEvent, session: SyncLogEntry) => {
+        e.stopPropagation();
+        if (!confirm('Bạn có chắc muốn dừng tiến trình sync này? Tiến trình sẽ dừng an toàn sau khi hoàn tất file hiện tại.')) return;
+        stopMutation.mutate(session.projectId);
     };
 
     const fmt = (d: string) => new Date(d).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric', year: '2-digit' });
@@ -60,21 +75,39 @@ export function SyncLogsPage() {
         return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
     });
 
+    // Live duration timer for running sessions
+    const [now, setNow] = useState(Date.now());
+    const hasRunning = sessions.some(s => s.status === 'running');
+    useEffect(() => {
+        if (!hasRunning) return;
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [hasRunning]);
+
+    const getDuration = (session: SyncLogEntry) => {
+        if (session.status === 'running') {
+            return Math.round((now - new Date(session.startTime).getTime()) / 1000);
+        }
+        return session.duration;
+    };
+
     const currentBadge = (c?: string) => {
         if (!c) return <span className="text-xs text-muted-foreground">—</span>;
-        if (c === 'success' || c === 'error' || c === 'interrupted') return statusBadge(c);
+        if (c === 'success' || c === 'error' || c === 'interrupted' || c === 'running') return statusBadge(c);
         return <span className="text-xs text-muted-foreground">{c}</span>;
     };
 
     const canContinue = (session: SyncLogEntry) => {
         if (session.status !== 'error' && session.status !== 'interrupted') return false;
         if (session.continueId) return false;
+        if (continuedSessions.has(session.sessionId)) return false;
         return true;
     };
 
     const statusBadge = (s: string) => {
         if (s === 'success') return <Badge variant="success"><CheckCircle2 className="w-3 h-3 mr-1" />Thành công</Badge>;
         if (s === 'error') return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Lỗi</Badge>;
+        if (s === 'running') return <Badge variant="default" className="bg-blue-500"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang Sync</Badge>;
         return <Badge variant="warning"><Timer className="w-3 h-3 mr-1" />Gián đoạn</Badge>;
     };
 
@@ -124,7 +157,8 @@ export function SyncLogsPage() {
                                 <SelectItem value="all">Tất cả</SelectItem>
                                 <SelectItem value="success">Thành công</SelectItem>
                                 <SelectItem value="error">Lỗi</SelectItem>
-                                <SelectItem value="interrupted">Ngắt</SelectItem>
+                                <SelectItem value="interrupted">Gián đoạn</SelectItem>
+                                <SelectItem value="running">Đang Sync</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -170,7 +204,7 @@ export function SyncLogsPage() {
                                         <TableCell className="text-sm">{fmt(session.startTime)}</TableCell>
                                         <TableCell className="text-center font-medium text-emerald-600">{session.filesCount}</TableCell>
                                         <TableCell className="text-center font-medium text-destructive">{session.failedCount || 0}</TableCell>
-                                        <TableCell className="text-center">{session.duration}s</TableCell>
+                                        <TableCell className="text-center">{getDuration(session)}s</TableCell>
                                         <TableCell className="text-center text-sm">{formatBytes(session.totalSize || 0)}</TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
@@ -186,21 +220,35 @@ export function SyncLogsPage() {
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-xs font-mono text-muted-foreground">
-                                            {session.continueId || '-'}
+                                            {session.continueId || (continuedSessions.has(session.sessionId) ? <span className="text-blue-500 italic">Đang tiếp tục...</span> : '-')}
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            {canContinue(session) && (
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="outline" 
-                                                    className="h-7 text-xs"
-                                                    onClick={(e) => handleContinue(e, session)}
-                                                    disabled={continueMutation.isPending}
-                                                >
-                                                    {continueMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
-                                                    Continue
-                                                </Button>
-                                            )}
+                                            <div className="flex justify-end gap-1">
+                                                {session.status === 'running' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        className="h-7 text-xs"
+                                                        onClick={(e) => handleStop(e, session)}
+                                                        disabled={stopMutation.isPending}
+                                                    >
+                                                        {stopMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3 mr-1" />}
+                                                        Dừng
+                                                    </Button>
+                                                )}
+                                                {canContinue(session) && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="h-7 text-xs"
+                                                        onClick={(e) => handleContinue(e, session)}
+                                                        disabled={continueMutation.isPending}
+                                                    >
+                                                        {continueMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                                                        Continue
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                     {expandedSession?.sessionId === session.sessionId && expandedSession?.projectId === session.projectId && (
@@ -223,8 +271,8 @@ export function SyncLogsPage() {
                                                                     <TableCell className="text-xs">{fmtSize(log.fileSize)}</TableCell>
                                                                     <TableCell className="text-xs">
                                                                         {log.status === 'success' ? <span className="text-emerald-600 font-medium">Thành công</span> :
-                                                                         log.status === 'error' ? <span className="text-destructive font-medium">Lỗi</span> :
-                                                                         <span className="text-muted-foreground">{log.status}</span>}
+                                                                            log.status === 'error' ? <span className="text-destructive font-medium">Lỗi</span> :
+                                                                                <span className="text-muted-foreground">{log.status}</span>}
                                                                     </TableCell>
                                                                     <TableCell className="text-xs">{fmt(log.createdDate)}</TableCell>
                                                                     <TableCell className="text-xs">{fmt(log.modifiedDate)}</TableCell>

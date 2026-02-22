@@ -23,7 +23,7 @@ const BASE_URL = API_URL ? (API_URL.endsWith('/') ? `${API_URL}api` : `${API_URL
 
 const api = axios.create({
     baseURL: BASE_URL,
-    timeout: 60000, // 60 seconds (sync can take a while)
+    timeout: 600000, // 10 minutes (sync tasks can be very long)
     headers: {
         'Content-Type': 'application/json',
     },
@@ -89,6 +89,7 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
             return mockFileLogs.filter(l => l.sessionId === sessionId);
         },
         continueSync: () => true,
+        stopSync: () => true,
         getProjectHeartbeats: () => mockProjects.map(p => ({
             projectId: p.id,
             lastCheckTimestamp: new Date().toISOString(),
@@ -199,6 +200,12 @@ export const gasService = {
     continueSync: async (sessionId: string, projectId: string): Promise<boolean> => {
         if (!isApiConfigured()) return getMockResponse('continueSync', sessionId, projectId);
         const { data } = await api.post(`logs/${sessionId}/continue`, { projectId });
+        return data.success;
+    },
+
+    stopSync: async (projectId: string): Promise<boolean> => {
+        if (!isApiConfigured()) return getMockResponse('stopSync', projectId);
+        const { data } = await api.post(`sync/stop/${projectId}`);
         return data.success;
     },
 

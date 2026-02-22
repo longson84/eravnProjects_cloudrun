@@ -62,11 +62,14 @@ app.use('/api/system', systemController);
 // Start Server
 // ==========================================
 
-app.listen(CONFIG.PORT, () => {
+const server = app.listen(CONFIG.PORT, () => {
     logger.info(`🚀 eravnProjects Backend running on port ${CONFIG.PORT}`);
     logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`   GCP Project: ${CONFIG.GCP_PROJECT_ID || '(not set)'}`);
     logger.info(`   CORS Origins: ${CONFIG.CORS_ORIGINS.join(', ')}`);
 });
+
+// Set server timeout to 15 minutes (900,000ms) to accommodate long syncs
+server.timeout = 900000;
 
 export default app;

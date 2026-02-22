@@ -12,6 +12,7 @@ import * as projectService from './projectService.js';
 import * as driveService from './driveService.js';
 import * as webhookService from './webhookService.js';
 import * as repo from '../repositories/firestoreRepository.js';
+import { shouldStop, clearStop } from './stopSignalRegistry.js';
 import type { Project, SyncSession, FileLog } from '../types.js';
 
 /**
@@ -104,16 +105,33 @@ export async function syncProjectById(
 
     const runId = generateRunId();
     const settings = await getSettings();
-    const result = await syncSingleProject(project, runId, settings, options);
+
+    let result: SyncSession;
+    try {
+        result = await syncSingleProject(project, runId, settings, options);
+    } catch (e) {
+        // Unified error handling — same as syncAllProjects
+        logger.error(`Error syncing project ${project.name}: ${(e as Error).message}`);
+        result = await createErrorSession(project, runId, (e as Error).message);
+
+        // Update project status to trigger continue mode on next sync
+        await projectService.updateProject({
+            id: project.id,
+            status: 'error',
+            lastSyncStatus: 'error',
+        });
+    }
 
     if (settings.enableNotifications && settings.webhookUrl) {
         await webhookService.sendSyncSummary([result], runId);
     }
 
     return {
-        success: true,
+        success: result.status !== 'error',
         runId,
-        message: `Synced ${result.filesCount} files`,
+        message: result.status === 'error'
+            ? `Sync failed: ${result.errorMessage}`
+            : `Synced ${result.filesCount} files`,
         stats: {
             filesCount: result.filesCount,
             totalSizeSynced: result.totalSizeSynced,
@@ -135,8 +153,13 @@ async function syncSingleProject(
 ): Promise<SyncSession> {
     const triggeredBy = options?.triggeredBy || 'manual';
     const startTime = Date.now();
-    const cutoffMs = (settings.syncCutoffSeconds || CONFIG.SYNC_CUTOFF_SECONDS) * 1000;
+    const settingsCutoff = Number(settings.syncCutoffSeconds);
+    const configCutoff = Number(CONFIG.SYNC_CUTOFF_SECONDS);
+    const finalCutoffSeconds = settingsCutoff > 0 ? settingsCutoff : (configCutoff > 0 ? configCutoff : 300);
+    const cutoffMs = finalCutoffSeconds * 1000;
     const sessionTimestamp = getCurrentTimestamp();
+
+    logger.info(`[Sync:${project.id}] START. Cutoff: ${finalCutoffSeconds}s (Settings: ${settingsCutoff}s, Config: ${configCutoff}s). StartTime: ${startTime}`);
 
     // Step 1: Base timestamp & checkpoint
     const syncStartTime = project.syncStartDate ? new Date(project.syncStartDate).getTime() : 0;
@@ -148,6 +171,19 @@ async function syncSingleProject(
     }
 
     const lastSyncStatus = project.lastSyncStatus || null;
+
+    // Atomic Lock Check: Prevent concurrent syncs for the same project
+    // If status is 'pending', another instance is already running
+    if (lastSyncStatus === 'pending') {
+        const lastUpdate = new Date(project.updatedAt).getTime();
+        const now = Date.now();
+        // Safety: If it's been 'pending' for more than 2 hours, assume it's stalled and allow takeover
+        if (now - lastUpdate < 2 * 60 * 60 * 1000) {
+            logger.warn(`[Sync:${project.id}] ABORTED. Another sync is already in progress.`);
+            throw new Error('Dự án này đang trong quá trình đồng bộ bởi một tiến trình khác.');
+        }
+    }
+
     const baseTimestamp = Math.max(checkpointTime, syncStartTime);
 
     let isContinueMode = false;
@@ -157,28 +193,6 @@ async function syncSingleProject(
 
     logger.info(`Starting sync for project: ${project.name}, runId: ${runId}, triggeredBy: ${triggeredBy}`);
     if (lastSyncStatus) logger.info(`Last Sync Status: ${lastSyncStatus}`);
-
-    // Determine Mode
-    if (lastSyncStatus === 'error' || lastSyncStatus === 'interrupted') {
-        isContinueMode = true;
-        logger.info('Checking for pending sessions (Continue Mode)...');
-        pendingSessions = await repo.getPendingSyncSessions(project.id);
-        logger.info(`Found ${pendingSessions.length} pending sessions.`);
-
-        if (pendingSessions.length > 0) {
-            for (const ps of pendingSessions) {
-                const logs = await repo.getFileLogsBySession(ps.id);
-                for (const log of logs) {
-                    if (log.status === 'success') {
-                        successFilesMap[log.sourcePath] = log;
-                    }
-                }
-            }
-            logger.info(`Mapped ${Object.keys(successFilesMap).length} successful files to skip.`);
-        } else {
-            isContinueMode = false;
-        }
-    }
 
     const sinceTimestamp = effectiveTimestamp > 0
         ? new Date(effectiveTimestamp).toISOString()
@@ -191,8 +205,8 @@ async function syncSingleProject(
         runId,
         timestamp: sessionTimestamp,
         executionDurationSeconds: 0,
-        status: 'success',
-        current: 'success',
+        status: 'running', // Start as running — will become success/interrupted/error at the end
+        current: 'running',
         filesCount: 0,
         failedFilesCount: 0,
         totalSizeSynced: 0,
@@ -201,19 +215,55 @@ async function syncSingleProject(
         continueId: null,
     };
 
+    // PERSISTENCE START: Save session immediately so Sync Logs can show it
+    // Note: lastSyncStatus='pending' is already set by the controller before fire-and-forget
+    await repo.saveSyncSession(session);
+
     const fileLogsBatch: Partial<FileLog>[] = [];
     let isInterrupted = false;
+
+    // Helper to save progress incrementally
+    async function saveProgress(): Promise<void> {
+        if (fileLogsBatch.length === 0) return;
+
+        try {
+            const logsToSave = [...fileLogsBatch];
+            fileLogsBatch.length = 0; // Clear the batch
+
+            await repo.batchSaveFileLogs(session.id, logsToSave);
+
+            // Update session record with current counts
+            session.executionDurationSeconds = Math.round((Date.now() - startTime) / 1000);
+            await repo.saveSyncSession(session);
+
+            logger.info(`[Sync:${project.id}] Progressive save: ${session.filesCount} files synced.`);
+        } catch (e) {
+            const fileLogError = (e as Error).message;
+            logger.error(`[Sync:${project.id}] Progressive save FAILED: ${fileLogError}`);
+            // Reflect file log failure in session status
+            if (session.status === 'success' || session.status === 'running') {
+                session.status = 'warning';
+            }
+            session.errorMessage = (session.errorMessage ? session.errorMessage + ' | ' : '') +
+                `[File logs save failed: ${fileLogError}]`;
+        }
+    }
 
     // Recursive sync function
     async function syncFolder(sourceFolderId: string, destFolderId: string, pathPrefix: string): Promise<void> {
         if (isInterrupted) return;
 
-        // Check cutoff time
-        if (Date.now() - startTime > cutoffMs) {
+        // Check cutoff time + stop signal
+        const elapsed = Date.now() - startTime;
+        const stopRequested = shouldStop(project.id);
+        if (elapsed > cutoffMs || stopRequested) {
             isInterrupted = true;
             session.status = 'interrupted';
             session.current = 'interrupted';
-            session.errorMessage = `Cutoff timeout: đã vượt quá ${settings.syncCutoffSeconds} giây. Safe exit.`;
+            session.errorMessage = stopRequested
+                ? `Đã dừng theo yêu cầu người dùng. (Elapsed: ${Math.round(elapsed / 1000)}s)`
+                : `Cutoff timeout: đã vượt quá ${finalCutoffSeconds} giây (Elapsed: ${elapsed}ms > Cutoff: ${cutoffMs}ms). Safe exit.`;
+            if (stopRequested) clearStop(project.id);
             logger.warn(session.errorMessage);
             return;
         }
@@ -236,12 +286,17 @@ async function syncSingleProject(
         for (const file of files) {
             if (isInterrupted) return;
 
-            // Check cutoff
-            if (Date.now() - startTime > cutoffMs) {
+            // Check cutoff + stop signal
+            const elapsed = Date.now() - startTime;
+            const stopRequested = shouldStop(project.id);
+            if (elapsed > cutoffMs || stopRequested) {
                 isInterrupted = true;
                 session.status = 'interrupted';
                 session.current = 'interrupted';
-                session.errorMessage = `Cutoff timeout: đã vượt quá ${settings.syncCutoffSeconds} giây. Safe exit.`;
+                session.errorMessage = stopRequested
+                    ? `Đã dừng theo yêu cầu người dùng. (Elapsed: ${Math.round(elapsed / 1000)}s)`
+                    : `Cutoff timeout: đã vượt quá ${finalCutoffSeconds} giây (Elapsed: ${elapsed}ms > Cutoff: ${cutoffMs}ms). Safe exit.`;
+                if (stopRequested) clearStop(project.id);
                 return;
             }
 
@@ -250,6 +305,7 @@ async function syncSingleProject(
                 sourceLink: `https://drive.google.com/file/d/${file.id}/view`,
                 destLink: '',
                 sourcePath: pathPrefix + file.name,
+                sourceFileId: file.id,
                 createdDate: file.createdTime || getCurrentTimestamp(),
                 modifiedDate: file.modifiedTime || getCurrentTimestamp(),
                 fileSize: 0,
@@ -264,7 +320,8 @@ async function syncSingleProject(
                 // Continue Mode check
                 let shouldCopy = true;
                 const currentSourcePath = pathPrefix + file.name;
-                const prevSuccessLog = successFilesMap[currentSourcePath];
+                // Try unique ID first, then fallback to path for old logs
+                const prevSuccessLog = successFilesMap[file.id] || successFilesMap[currentSourcePath];
 
                 if (isContinueMode && prevSuccessLog) {
                     const prevModTime = new Date(prevSuccessLog.modifiedDate).getTime();
@@ -312,42 +369,74 @@ async function syncSingleProject(
                     fileLogEntry.status = 'skipped';
                     fileLogEntry.errorMessage = 'Source file not found (deleted)';
                 } else {
-                    if (session.status === 'success') session.status = 'warning';
+                    if (session.status === 'success' || session.status === 'running') {
+                        session.status = 'warning';
+                    }
                 }
             }
 
             fileLogsBatch.push(fileLogEntry);
+
+            // Progressive save: every 50 files
+            if (fileLogsBatch.length >= 50) {
+                await saveProgress();
+            }
         }
     }
 
-    // EXECUTION
+    // EXECUTION — comprehensive error boundary covers continue mode init + sync
     try {
+        // Determine Continue Mode (inside try-catch to guarantee session is saved on error)
+        if (lastSyncStatus === 'error' || lastSyncStatus === 'interrupted') {
+            isContinueMode = true;
+            logger.info('Checking for pending sessions (Continue Mode)...');
+            pendingSessions = await repo.getPendingSyncSessions(project.id);
+            logger.info(`Found ${pendingSessions.length} pending sessions.`);
+
+            if (pendingSessions.length > 0) {
+                for (const ps of pendingSessions) {
+                    const logs = await repo.getFileLogsBySession(ps.id);
+                    for (const log of logs) {
+                        if (log.status === 'success') {
+                            // Use file ID as primary key if available, fallback to path
+                            if (log.sourceFileId) {
+                                successFilesMap[log.sourceFileId] = log;
+                            } else {
+                                successFilesMap[log.sourcePath] = log;
+                            }
+                        }
+                    }
+                }
+                logger.info(`Mapped ${Object.keys(successFilesMap).length} successful files to skip.`);
+            } else {
+                isContinueMode = false;
+            }
+        }
+
         await syncFolder(project.sourceFolderId, project.destFolderId, '/');
+
+        // Final status: only promote to 'success' if still 'running' (no timeout, no error)
+        if (session.status === 'running') {
+            session.status = 'success';
+            session.current = 'success';
+        }
     } catch (e) {
-        logger.error(`Sync execution FAILED: ${(e as Error).message}`);
+        logger.error(`Sync execution FAILED for project ${project.name}: ${(e as Error).message}`);
         session.status = 'error';
         session.current = 'error';
         session.errorMessage = (e as Error).message;
     }
 
-    // Calculate duration
+    // Finalize duration
     session.executionDurationSeconds = Math.round((Date.now() - startTime) / 1000);
 
-    // Save session
-    if (session.filesCount > 0 || session.status !== 'success' || (session.failedFilesCount || 0) > 0) {
-        await repo.saveSyncSession(session);
-    }
+    // Final save for any remaining logs and the session status
+    await saveProgress();
+
+    // Final session save to update duration and successful status
+    await repo.saveSyncSession(session);
 
     await repo.saveProjectHeartbeat(project.id, session.status);
-
-    // Batch save logs
-    if (fileLogsBatch.length > 0) {
-        try {
-            await repo.batchSaveFileLogs(session.id, fileLogsBatch);
-        } catch (e) {
-            logger.error(`FAILED to save file logs: ${(e as Error).message}`);
-        }
-    }
 
     // Post-Processing for Continue Mode
     if (isContinueMode && pendingSessions.length > 0) {
