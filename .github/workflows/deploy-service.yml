@@ -72,7 +72,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
@@ -87,7 +87,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
