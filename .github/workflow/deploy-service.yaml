@@ -1,0 +1,94 @@
+name: Deploy Cloud Run Service
+
+# ─── KHI NÀO CHẠY? ───
+# Trigger 1: Push lên services-build → deploy STAGING
+# Trigger 2: Push lên master → deploy PRODUCTION
+on:
+  push:
+    branches:
+      - services-build
+      - master
+    paths:
+      - 'eravn-backend/**'                      # Chỉ chạy khi folder backend thay đổi
+      - '.github/workflows/deploy-service.yml'   # Hoặc khi workflow file thay đổi
+
+# ─── BIẾN DÙNG CHUNG ───
+env:
+  REGION: asia-southeast1
+  IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/cloud-run-source-deploy/eravn-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    # Quyền cần cho WIF
+    permissions:
+      contents: read       # Đọc code trong repo
+      id-token: write      # Gửi OIDC token cho GCP
+
+    steps:
+      # ── Bước 1: Lấy code từ repo ──
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Bước 2: Xác thực với GCP qua WIF ──
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      # ── Bước 3: Setup gcloud CLI ──
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Bước 4: Cho phép Docker push lên Artifact Registry ──
+      - name: Configure Docker
+        run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+
+      # ── Bước 5: Build Docker image ──
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f eravn-backend/Dockerfile \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            eravn-backend/
+
+      # ── Bước 6: Push image lên Artifact Registry ──
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      # ── Bước 7: Deploy lên Cloud Run ──
+      # Dùng if/else để chọn STAGING hay PRODUCTION
+      - name: Deploy to Staging
+        if: github.ref == 'refs/heads/services-build'
+        run: |
+          gcloud run deploy eravn-backend-staging \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173" \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-instances 1 \
+            --timeout 900
+
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/master'
+        run: |
+          gcloud run deploy eravn-backend \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173" \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-instances 1 \
+            --timeout 900
