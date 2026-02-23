@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save, Bell, Clock, Database, RotateCcw, CheckCircle2, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
+import { Settings, Save, Bell, Clock, Database, RotateCcw, CheckCircle2, AlertTriangle, Trash2, Loader2, Globe, FlaskConical } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,13 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useAppContext } from '@/context/AppContext';
 import { gasService } from '@/services/gasService';
 import type { AppSettings } from '@/types/types';
-import { useSettings, useUpdateSettings, useResetDatabase } from '@/hooks/useSettings';
+import { useSettings, useUpdateSettings, useResetDatabase, useSoftReset } from '@/hooks/useSettings';
 
 export function SettingsPage() {
     const { state, setTheme } = useAppContext();
     const { data: settings, isLoading } = useSettings();
     const updateSettingsMutation = useUpdateSettings();
     const resetDatabaseMutation = useResetDatabase();
+    const softResetMutation = useSoftReset();
 
     const [form, setForm] = useState<AppSettings>({
         syncCutoffSeconds: 300,
@@ -26,9 +27,10 @@ export function SettingsPage() {
         enableNotifications: false,
         maxRetries: 3,
         batchSize: 450,
-        enableAutoSchedule: true
+        enableAutoSchedule: true,
+        timezone: 'Asia/Ho_Chi_Minh',
     });
-    
+
     useEffect(() => {
         if (settings) {
             setForm(settings);
@@ -37,9 +39,10 @@ export function SettingsPage() {
     }, [settings]);
 
     const [saved, setSaved] = useState(false);
-    
+
     // Reset DB States
     const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+    const [isSoftResetDialogOpen, setIsSoftResetDialogOpen] = useState(false);
     const [resetConfirmText, setResetConfirmText] = useState('');
     const [isTestingWebhook, setIsTestingWebhook] = useState(false);
 
@@ -49,7 +52,7 @@ export function SettingsPage() {
         // Match */N * * * * (Minutes)
         const minMatch = cron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
         if (minMatch) return parseInt(minMatch[1], 10);
-        
+
         // Match 0 */N * * * (Hours)
         const hourMatch = cron.match(/^0\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
         if (hourMatch) return parseInt(hourMatch[1], 10) * 60;
@@ -81,7 +84,7 @@ export function SettingsPage() {
                 ...form,
                 defaultScheduleCron: minutesToCron(finalMinutes)
             };
-            
+
             await updateSettingsMutation.mutateAsync(updatedForm);
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
@@ -101,16 +104,27 @@ export function SettingsPage() {
 
     const handleResetDatabase = async () => {
         if (resetConfirmText !== 'I understand') return;
-        
+
         try {
             await resetDatabaseMutation.mutateAsync();
             setIsResetDialogOpen(false);
             setResetConfirmText('');
-            // Reload to clear any stale state
-            window.location.reload();
         } catch (error) {
-            console.error('Reset failed:', error);
+            console.error('Reset database failed:', error);
             alert('Reset failed. Check console for details.');
+        }
+    };
+
+    const handleSoftReset = async () => {
+        if (resetConfirmText !== 'I understand') return;
+
+        try {
+            await softResetMutation.mutateAsync();
+            setIsSoftResetDialogOpen(false);
+            setResetConfirmText('');
+        } catch (error) {
+            console.error('Soft reset failed:', error);
+            alert('Soft reset failed. Check console for details.');
         }
     };
 
@@ -148,19 +162,19 @@ export function SettingsPage() {
                         <Separator />
                         <div className="grid gap-2">
                             <Label htmlFor="schedule">Lịch chạy mặc định (Phút)</Label>
-                            <Input 
-                                id="schedule" 
-                                type="number" 
+                            <Input
+                                id="schedule"
+                                type="number"
                                 min="5"
-                                value={scheduleMinutes} 
+                                value={scheduleMinutes}
                                 onChange={e => {
                                     const val = Number(e.target.value);
                                     setScheduleMinutes(val);
                                     update('defaultScheduleCron', minutesToCron(val));
-                                }} 
+                                }}
                             />
                             <p className="text-xs text-muted-foreground">
-                                Chu kỳ chạy đồng bộ (tính bằng phút, tối thiểu 5 phút). 
+                                Chu kỳ chạy đồng bộ (tính bằng phút, tối thiểu 5 phút).
                                 {scheduleMinutes >= 60 && ` (~${(scheduleMinutes / 60).toFixed(1)} giờ)`}
                             </p>
                         </div>
@@ -195,6 +209,29 @@ export function SettingsPage() {
                 <div className="space-y-6">
                     <Card>
                         <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5 text-amber-500" />Test Zone</CardTitle>
+                            <CardDescription>Các công cụ hỗ trợ kiểm thử và reset dữ liệu an toàn</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <Label className="text-amber-600">Soft Reset</Label>
+                                    <p className="text-xs text-muted-foreground mt-0.5">Xóa toàn bộ lịch sử sync nhưng giữ lại các dự án.</p>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="text-amber-600 border-amber-600/30 hover:bg-amber-600/10 hover:text-amber-600"
+                                    onClick={() => { setIsSoftResetDialogOpen(true); setResetConfirmText(''); }}
+                                >
+                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                    Soft Reset
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
                             <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5 text-primary" />Thông báo</CardTitle>
                             <CardDescription>Cấu hình webhook và thông báo</CardDescription>
                         </CardHeader>
@@ -207,15 +244,15 @@ export function SettingsPage() {
                             <div className="grid gap-2">
                                 <Label htmlFor="webhook">Google Chat Webhook URL</Label>
                                 <div className="flex gap-2">
-                                    <Input 
-                                        id="webhook" 
-                                        value={form.webhookUrl} 
-                                        onChange={e => update('webhookUrl', e.target.value)} 
-                                        placeholder="https://chat.googleapis.com/v1/spaces/..." 
-                                        className="font-mono text-xs flex-1" 
+                                    <Input
+                                        id="webhook"
+                                        value={form.webhookUrl}
+                                        onChange={e => update('webhookUrl', e.target.value)}
+                                        placeholder="https://chat.googleapis.com/v1/spaces/..."
+                                        className="font-mono text-xs flex-1"
                                     />
-                                    <Button 
-                                        variant="outline" 
+                                    <Button
+                                        variant="outline"
                                         size="icon"
                                         onClick={async () => {
                                             if (!form.webhookUrl) return;
@@ -239,7 +276,7 @@ export function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    <Card>
+                    {/* <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><Database className="w-5 h-5 text-primary" />Firebase</CardTitle>
                             <CardDescription>Kết nối Firestore database</CardDescription>
@@ -250,13 +287,13 @@ export function SettingsPage() {
                                 <Input id="fbProject" value={form.firebaseProjectId} onChange={e => update('firebaseProjectId', e.target.value)} placeholder="my-project-id" />
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card> */}
 
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><Settings className="w-5 h-5 text-primary" />Giao diện</CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <div><Label>Dark Mode</Label><p className="text-xs text-muted-foreground mt-0.5">Hiện tại: {state.theme}</p></div>
                                 <div className="flex gap-1">
@@ -264,6 +301,31 @@ export function SettingsPage() {
                                         <Button key={t} variant={state.theme === t ? 'default' : 'outline'} size="sm" onClick={() => setTheme(t)} className="capitalize">{t}</Button>
                                     ))}
                                 </div>
+                            </div>
+                            <Separator />
+                            <div className="grid gap-2">
+                                <Label htmlFor="timezone" className="flex items-center gap-2">
+                                    <Globe className="w-4 h-4" />
+                                    Múi giờ hiển thị
+                                </Label>
+                                <select
+                                    id="timezone"
+                                    value={form.timezone || 'Asia/Ho_Chi_Minh'}
+                                    onChange={e => update('timezone', e.target.value)}
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                >
+                                    <option value="Asia/Ho_Chi_Minh">Việt Nam (GMT+7)</option>
+                                    <option value="Asia/Bangkok">Thái Lan (GMT+7)</option>
+                                    <option value="Asia/Singapore">Singapore (GMT+8)</option>
+                                    <option value="Asia/Tokyo">Nhật Bản (GMT+9)</option>
+                                    <option value="Asia/Shanghai">Trung Quốc (GMT+8)</option>
+                                    <option value="Asia/Kolkata">Ấn Độ (GMT+5:30)</option>
+                                    <option value="Europe/London">London (GMT+0/+1)</option>
+                                    <option value="America/New_York">New York (GMT-5/-4)</option>
+                                    <option value="America/Los_Angeles">Los Angeles (GMT-8/-7)</option>
+                                    <option value="UTC">UTC</option>
+                                </select>
+                                <p className="text-xs text-muted-foreground">Tất cả thời gian trong ứng dụng sẽ hiển thị theo múi giờ này.</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -277,11 +339,11 @@ export function SettingsPage() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <Label className="text-destructive">Reset Database</Label>
-                                    <p className="text-xs text-muted-foreground mt-0.5">Xóa toàn bộ Projects, Sync Sessions và File Logs.</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">Xóa toàn bộ dự án, lịch sử sync và file logs.</p>
                                 </div>
-                                <Button variant="destructive" onClick={() => setIsResetDialogOpen(true)}>
+                                <Button variant="destructive" onClick={() => { setIsResetDialogOpen(true); setResetConfirmText(''); }}>
                                     <Trash2 className="w-4 h-4 mr-2" />
-                                    Reset DB
+                                    Hard Reset
                                 </Button>
                             </div>
                         </CardContent>
@@ -306,13 +368,13 @@ export function SettingsPage() {
                             <p className="text-destructive font-medium">Hành động này không thể hoàn tác!</p>
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2">
                             <Label htmlFor="confirm">Nhập "I understand" để xác nhận</Label>
-                            <Input 
-                                id="confirm" 
-                                value={resetConfirmText} 
+                            <Input
+                                id="confirm"
+                                value={resetConfirmText}
                                 onChange={(e) => setResetConfirmText(e.target.value)}
                                 placeholder="I understand"
                                 className="border-destructive/50 focus-visible:ring-destructive"
@@ -322,12 +384,58 @@ export function SettingsPage() {
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsResetDialogOpen(false)} disabled={resetDatabaseMutation.isPending}>Hủy</Button>
-                        <Button 
-                            variant="destructive" 
-                            onClick={handleResetDatabase} 
+                        <Button
+                            variant="destructive"
+                            onClick={handleResetDatabase}
                             disabled={resetConfirmText !== 'I understand' || resetDatabaseMutation.isPending}
                         >
                             {resetDatabaseMutation.isPending ? 'Đang xóa...' : 'Xác nhận xóa'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isSoftResetDialogOpen} onOpenChange={setIsSoftResetDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="text-amber-600 flex items-center gap-2">
+                            <RotateCcw className="w-5 h-5" />
+                            Xác nhận Soft Reset
+                        </DialogTitle>
+                        <DialogDescription className="space-y-2 pt-2">
+                            <p>Hành động này sẽ thực hiện các thay đổi sau:</p>
+                            <ul className="list-disc list-inside text-sm">
+                                <li><strong>Xóa vĩnh viễn</strong> Lịch sử Sync (Sessions) và File logs</li>
+                                <li><strong>Giữ lại</strong> danh sách Dự án hiện có</li>
+                                <li><strong>Reset</strong> các chỉ số của dự án (file count, size, lần sync cuối) về 0</li>
+                                <li><strong>Cài đặt lại</strong> lịch Sync dự kiến (Next Sync) về ngày bắt đầu gốc</li>
+                            </ul>
+                            <p className="text-amber-600 font-medium italic text-xs">Phù hợp khi bạn muốn reset lại tiến trình mà không muốn nhập lại các dự án.</p>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="confirm-soft">Nhập "I understand" để xác nhận</Label>
+                            <Input
+                                id="confirm-soft"
+                                value={resetConfirmText}
+                                onChange={(e) => setResetConfirmText(e.target.value)}
+                                placeholder="I understand"
+                                className="border-amber-600/50 focus-visible:ring-amber-600"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsSoftResetDialogOpen(false)} disabled={softResetMutation.isPending}>Hủy</Button>
+                        <Button
+                            variant="default"
+                            className="bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={handleSoftReset}
+                            disabled={resetConfirmText !== 'I understand' || softResetMutation.isPending}
+                        >
+                            {softResetMutation.isPending ? 'Đang xử lý...' : 'Xác nhận Soft Reset'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

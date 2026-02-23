@@ -30,9 +30,18 @@ export function useResetDatabase() {
             queryClient.invalidateQueries({ queryKey: ['projects'] });
             queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
             queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
-            // Settings might be reset too? If so, invalidate settings.
-            // Usually resetDatabase clears data, but settings might persist or reset to default.
-            // Assuming settings might be reset or irrelevant.
+        },
+    });
+}
+
+export function useSoftReset() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: () => gasService.softReset(),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
         },
     });
 }

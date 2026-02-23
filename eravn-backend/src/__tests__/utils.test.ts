@@ -74,11 +74,16 @@ describe('Utils', () => {
     });
 
     describe('formatTimestampForFilename', () => {
-        it('should format date to YYMMDD_HHmm', () => {
-            const date = new Date('2026-02-14T13:58:00Z');
-            const result = formatTimestampForFilename(date);
-            // format depends on timezone, but pattern should be 6digits_4digits
-            expect(result).toMatch(/^\d{6}_\d{4}$/);
+        it('should format date to YYMMDD_HHmm in specified timezone', () => {
+            const date = new Date('2026-02-14T13:58:00Z'); // 13:58 UTC
+
+            // In Asia/Ho_Chi_Minh (UTC+7), this should be 20:58
+            const resultVN = formatTimestampForFilename(date, 'Asia/Ho_Chi_Minh');
+            expect(resultVN).toBe('260214_2058');
+
+            // In UTC, this should be 13:58
+            const resultUTC = formatTimestampForFilename(date, 'UTC');
+            expect(resultUTC).toBe('260214_1358');
         });
     });
 

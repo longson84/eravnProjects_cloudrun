@@ -225,6 +225,7 @@ export function getDefaultSettings(): AppSettings {
         enableAutoSchedule: true,
         maxRetries: CONFIG.MAX_RETRIES,
         batchSize: CONFIG.BATCH_SIZE,
+        timezone: 'Asia/Ho_Chi_Minh',
     };
 }
 
@@ -270,7 +271,17 @@ export async function resetDatabase(): Promise<boolean> {
     return true;
 }
 
-async function deleteAllDocumentsInCollection(collectionName: string): Promise<void> {
+/**
+ * Clear only sync-related data (keeping projects)
+ */
+export async function clearSyncData(): Promise<void> {
+    const collections = ['syncSessions', 'fileLogs', 'heartbeats'];
+    for (const collectionName of collections) {
+        await deleteAllDocumentsInCollection(collectionName);
+    }
+}
+
+export async function deleteAllDocumentsInCollection(collectionName: string): Promise<void> {
     const batchSize = 100;
     const collectionRef = db.collection(collectionName);
 

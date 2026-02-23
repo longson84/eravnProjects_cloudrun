@@ -25,7 +25,12 @@ export async function getSettings(): Promise<AppSettings> {
     }
 
     logger.info('Settings cache miss, loading from Firestore');
-    settingsCache = await repo.getSettingsFromDb();
+    const loaded = await repo.getSettingsFromDb();
+    // Ensure timezone has a default value (migration for existing data)
+    if (!loaded.timezone) {
+        loaded.timezone = 'Asia/Ho_Chi_Minh';
+    }
+    settingsCache = loaded;
     cacheTimestamp = now;
     return settingsCache;
 }

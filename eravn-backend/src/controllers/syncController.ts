@@ -35,16 +35,8 @@ router.post('/all', verifyCronToken, async (req: Request, res: Response) => {
         const triggeredBy = req.body?.triggeredBy || 'scheduled';
         logger.info(`Sync all projects trigger acknowledged: ${triggeredBy}. Starting background process.`);
 
-        // Set all active projects to 'pending' BEFORE firing background sync
-        // This ensures frontend sees correct status on refetch
-        const allProjects = await projectService.getAllProjects();
-        const activeProjects = allProjects.filter(p => p.status === 'active');
-        const syncTimestamp = new Date().toISOString();
-        await Promise.all(activeProjects.map(p =>
-            projectService.updateProject({ id: p.id, lastSyncStatus: 'pending', lastSyncTimestamp: syncTimestamp })
-        ));
-
         // FIRE AND FORGET: Start sync in background, don't await the full result
+        // syncService handles status management internally (after lock check)
         syncService.syncAllProjects({ triggeredBy }).catch(e => {
             logger.error('Background Sync All Projects FAILED:', { error: e.message });
         });
@@ -67,21 +59,14 @@ router.post('/:projectId', async (req: Request, res: Response) => {
         const projectId = req.params.projectId as string;
         logger.info(`Single project sync trigger acknowledged for: ${projectId}. Starting background process.`);
 
-        // Set project to 'pending' BEFORE firing background sync
-        await projectService.updateProject({
-            id: projectId,
-            lastSyncStatus: 'pending',
-            lastSyncTimestamp: new Date().toISOString(),
-        });
-
-        // FIRE AND FORGET: Trigger sync service without awaiting
+        // FIRE AND FORGET: syncSingleProject manages isRunning lock and lastSyncStatus internally.
+        // DO NOT set lastSyncStatus here — it would erase 'interrupted' state needed for Continue Mode.
         syncService.syncProjectById(projectId, {
             triggeredBy: 'manual',
         }).catch(e => {
             logger.error(`Background Sync Project ${projectId} FAILED:`, { error: e.message });
         });
 
-        // Return immediately with a confirmation
         res.json({
             success: true,
             message: 'Quá trình đồng bộ đã bắt đầu và đang chạy trong nền.',

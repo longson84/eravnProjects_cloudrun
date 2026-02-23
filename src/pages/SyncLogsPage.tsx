@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useSyncLogs, useSyncLogDetails, useContinueSync } from '@/hooks/useSyncLogs';
-import { useStopSync } from '@/hooks/useProjects';
+import { useSettings } from '@/hooks/useSettings';
+import { StopSyncModal } from '@/components/StopSyncModal';
 import type { SyncLogEntry } from '@/types/types';
 
 const formatBytes = (bytes: number) => {
@@ -26,6 +27,11 @@ export function SyncLogsPage() {
     const [search, setSearch] = useState('');
     const [expandedSession, setExpandedSession] = useState<{ sessionId: string, projectId: string } | null>(null);
     const [continuedSessions, setContinuedSessions] = useState<Set<string>>(new Set());
+    const [stopModal, setStopModal] = useState<{ isOpen: boolean; projectId: string; projectName: string }>({
+        isOpen: false,
+        projectId: '',
+        projectName: ''
+    });
 
     const { data: sessions = [], isLoading } = useSyncLogs({
         days: parseInt(daysFilter),
@@ -46,7 +52,7 @@ export function SyncLogsPage() {
     );
 
     const continueMutation = useContinueSync();
-    const stopMutation = useStopSync();
+    const { data: settings } = useSettings();
 
     const handleExpand = (sessionId: string, projectId: string) => {
         if (expandedSession?.sessionId === sessionId && expandedSession?.projectId === projectId) {
@@ -64,11 +70,15 @@ export function SyncLogsPage() {
 
     const handleStop = (e: React.MouseEvent, session: SyncLogEntry) => {
         e.stopPropagation();
-        if (!confirm('Bạn có chắc muốn dừng tiến trình sync này? Tiến trình sẽ dừng an toàn sau khi hoàn tất file hiện tại.')) return;
-        stopMutation.mutate(session.projectId);
+        setStopModal({
+            isOpen: true,
+            projectId: session.projectId,
+            projectName: session.projectName
+        });
     };
 
-    const fmt = (d: string) => new Date(d).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric', year: '2-digit' });
+    const timezone = settings?.timezone || 'Asia/Ho_Chi_Minh';
+    const fmt = (d: string) => new Date(d).toLocaleString('vi-VN', { timeZone: timezone, hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric', year: '2-digit' });
     const fmtSize = (b?: number) => { if (!b) return '—'; if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`; return `${(b / 1048576).toFixed(0)} MB`; };
 
     const sortedSessions = [...sessions].sort((a, b) => {
@@ -230,9 +240,8 @@ export function SyncLogsPage() {
                                                         variant="destructive"
                                                         className="h-7 text-xs"
                                                         onClick={(e) => handleStop(e, session)}
-                                                        disabled={stopMutation.isPending}
                                                     >
-                                                        {stopMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3 mr-1" />}
+                                                        <Square className="w-3 h-3 mr-1" />
                                                         Dừng
                                                     </Button>
                                                 )}
@@ -253,7 +262,7 @@ export function SyncLogsPage() {
                                     </TableRow>
                                     {expandedSession?.sessionId === session.sessionId && expandedSession?.projectId === session.projectId && (
                                         <TableRow>
-                                            <TableCell colSpan={12} className="p-0 bg-muted/10">
+                                            <TableCell colSpan={13} className="p-0 bg-muted/10">
                                                 <div className="p-4 border-l-2 border-primary/20 ml-4 my-2 overflow-x-auto">
                                                     <h3 className="font-semibold mb-3 flex items-center gap-2"><FileText className="w-4 h-4" />Chi tiết file</h3>
                                                     {session.error && (
@@ -290,6 +299,14 @@ export function SyncLogsPage() {
                     </Table>
                 </CardContent>
             </Card>
+            <StopSyncModal
+                isOpen={stopModal.isOpen}
+                onClose={() => {
+                    setStopModal(prev => ({ ...prev, isOpen: false }));
+                }}
+                projectId={stopModal.projectId}
+                projectName={stopModal.projectName}
+            />
         </div>
     );
 }

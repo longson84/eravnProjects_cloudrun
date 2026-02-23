@@ -5,7 +5,7 @@
 
 import * as repo from '../repositories/firestoreRepository.js';
 import { getSettings } from './settingsService.js';
-import { generateId, getCurrentTimestamp, extractFolderIdFromLink } from '../utils.js';
+import { generateId, getCurrentTimestamp, extractFolderIdFromLink, getTodayStartInTimezone, getMidnightInTimezone } from '../utils.js';
 import logger from '../logger.js';
 import type { Project, SyncSession } from '../types.js';
 
@@ -57,6 +57,11 @@ export async function createProject(projectData: Partial<Project>): Promise<Proj
         throw new Error('Dự án với cặp thư mục Source và Destination này đã tồn tại!');
     }
 
+    const settings = await getSettings();
+    const nextSyncTimestamp = projectData.syncStartDate
+        ? getMidnightInTimezone(projectData.syncStartDate, settings.timezone)
+        : null;
+
     const newProject: Project = {
         id: generateId(),
         name: projectData.name,
@@ -71,7 +76,7 @@ export async function createProject(projectData: Partial<Project>): Promise<Proj
         totalSize: 0,
         lastSyncTimestamp: null,
         lastSuccessSyncTimestamp: null,
-        nextSyncTimestamp: null,
+        nextSyncTimestamp,
         lastSyncStatus: null,
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
@@ -95,6 +100,16 @@ export async function updateProject(projectData: Partial<Project>): Promise<Proj
         updatedAt: getCurrentTimestamp(),
     };
 
+    // If syncStartDate changed, update nextSyncTimestamp to match (midnight in timezone)
+    if (projectData.syncStartDate !== undefined && projectData.syncStartDate !== existing.syncStartDate) {
+        if (projectData.syncStartDate) {
+            const settings = await getSettings();
+            merged.nextSyncTimestamp = getMidnightInTimezone(projectData.syncStartDate, settings.timezone);
+        } else {
+            merged.nextSyncTimestamp = null;
+        }
+    }
+
     return repo.saveProject(merged);
 }
 
@@ -114,11 +129,73 @@ export async function resetProject(id: string): Promise<Project> {
     const project = await repo.getProjectById(id);
     if (!project) throw new Error('Không tìm thấy dự án');
 
-    project.nextSyncTimestamp = null;
-    project.lastSyncStatus = 'pending';
+    if (project.syncStartDate) {
+        const settings = await getSettings();
+        project.nextSyncTimestamp = getMidnightInTimezone(project.syncStartDate, settings.timezone);
+    } else {
+        project.nextSyncTimestamp = null;
+    }
+    project.lastSyncStatus = null; // LS: reset to null to force full resync
+    project.isRunning = false;
     project.updatedAt = getCurrentTimestamp();
 
     return repo.saveProject(project);
+}
+
+/**
+ * Soft Reset: Delete all sync logs, file logs, heartbeats, 
+ * and reset all project sync metadata while keeping basic project info.
+ */
+export async function softReset(): Promise<boolean> {
+    try {
+        logger.info('Starting Soft Reset process...');
+
+        // 1. Clear all sync logs, file logs and heartbeats
+        await repo.clearSyncData();
+
+        // 2. Reset all projects
+        const projects = await repo.getAllProjects();
+        const settings = await getSettings();
+        const now = getCurrentTimestamp();
+
+        for (const project of projects) {
+            // Keep basic info, reset sync states
+            const resetProject: Project = {
+                id: project.id,
+                name: project.name,
+                description: project.description || '',
+                sourceFolderId: project.sourceFolderId,
+                sourceFolderLink: project.sourceFolderLink,
+                destFolderId: project.destFolderId,
+                destFolderLink: project.destFolderLink,
+                syncStartDate: project.syncStartDate,
+                createdAt: project.createdAt,
+                status: 'active', // Reset to active
+                filesCount: 0,
+                totalSize: 0,
+                lastSyncTimestamp: null,
+                lastSuccessSyncTimestamp: null,
+                lastSyncStatus: null,
+                updatedAt: now,
+                isDeleted: false,
+            };
+
+            // Recalculate nextSyncTimestamp from syncStartDate
+            if (project.syncStartDate) {
+                resetProject.nextSyncTimestamp = getMidnightInTimezone(project.syncStartDate, settings.timezone);
+            } else {
+                resetProject.nextSyncTimestamp = null;
+            }
+
+            await repo.saveProject(resetProject);
+        }
+
+        logger.info(`Soft Reset completed. ${projects.length} projects reset.`);
+        return true;
+    } catch (e) {
+        logger.error('Soft Reset failed', { error: (e as Error).message });
+        throw e;
+    }
 }
 
 /**
@@ -126,9 +203,11 @@ export async function resetProject(id: string): Promise<Project> {
  */
 export async function getProjectStatsMap(): Promise<Record<string, { todayFiles: number; last7DaysFiles: number }>> {
     try {
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const settings = await getSettings();
+        const timezone = settings.timezone || 'Asia/Ho_Chi_Minh';
+
+        const todayStart = getTodayStartInTimezone(timezone);
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
         const recentSessions = await repo.getSyncSessions({ startDate: sevenDaysAgo });
         const stats: Record<string, { todayFiles: number; last7DaysFiles: number }> = {};

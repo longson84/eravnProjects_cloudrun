@@ -56,6 +56,7 @@ vi.mock('../../repositories/firestoreRepository.js', () => ({
         enableNotifications: false,
         maxRetries: 3,
         batchSize: 450,
+        timezone: 'Asia/Ho_Chi_Minh',
     }),
     saveSettingsToDb: vi.fn(),
 }));
@@ -250,6 +251,7 @@ describe('API Integration Tests', () => {
             enableNotifications: false,
             maxRetries: 3,
             batchSize: 450,
+            timezone: 'Asia/Ho_Chi_Minh',
         };
 
         it('GET /api/settings should return settings directly', async () => {

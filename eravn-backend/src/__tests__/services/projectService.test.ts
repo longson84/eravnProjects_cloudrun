@@ -19,6 +19,7 @@ vi.mock('../../services/settingsService.js', () => ({
         syncCutoffSeconds: 300,
         maxRetries: 3,
         batchSize: 450,
+        timezone: 'Asia/Ho_Chi_Minh',
     }),
 }));
 
@@ -118,6 +119,28 @@ describe('ProjectService', () => {
             expect(repo.saveProject).toHaveBeenCalledOnce();
         });
 
+        it('should set nextSyncTimestamp from syncStartDate on creation (midnight in TZ)', async () => {
+            const result = await createProject({
+                name: 'Project With Start Date',
+                sourceFolderId: 'src-id',
+                destFolderId: 'dst-id',
+                syncStartDate: '2026-02-22',
+            });
+
+            // Midnight Feb 22 in VN (GMT+7) = 17:00 Feb 21 UTC
+            expect(result.nextSyncTimestamp).toBe('2026-02-21T17:00:00.000Z');
+        });
+
+        it('should set nextSyncTimestamp to null when no syncStartDate', async () => {
+            const result = await createProject({
+                name: 'Project No Start Date',
+                sourceFolderId: 'src-id',
+                destFolderId: 'dst-id',
+            });
+
+            expect(result.nextSyncTimestamp).toBeNull();
+        });
+
         it('should throw if name is missing', async () => {
             await expect(createProject({
                 sourceFolderId: 'src-id',
@@ -174,6 +197,33 @@ describe('ProjectService', () => {
             );
         });
 
+        it('should update nextSyncTimestamp when syncStartDate changes (midnight in TZ)', async () => {
+            vi.mocked(repo.getProjectById).mockResolvedValue(makeProject({
+                syncStartDate: '2026-01-01',
+                nextSyncTimestamp: '2026-01-01T00:00:00.000Z',
+            }));
+
+            const result = await updateProject({ id: 'proj-1', syncStartDate: '2026-02-25' });
+
+            // Midnight Feb 25 in VN = 17:00 Feb 24 UTC
+            expect(result.nextSyncTimestamp).toBe('2026-02-24T17:00:00.000Z');
+        });
+
+        it('should preserve nextSyncTimestamp when syncStartDate is unchanged', async () => {
+            vi.mocked(repo.getProjectById).mockResolvedValue(makeProject({
+                syncStartDate: '2026-01-01',
+                nextSyncTimestamp: '2026-01-01T00:00:00.000Z',
+            }));
+
+            await updateProject({ id: 'proj-1', name: 'Just a name change' });
+
+            expect(repo.saveProject).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nextSyncTimestamp: '2026-01-01T00:00:00.000Z',
+                })
+            );
+        });
+
         it('should throw if project not found', async () => {
             await expect(updateProject({ id: 'nonexistent' })).rejects.toThrow('Không tìm thấy dự án');
         });
@@ -196,7 +246,26 @@ describe('ProjectService', () => {
     });
 
     describe('resetProject', () => {
-        it('should clear sync timestamps', async () => {
+        it('should reset nextSyncTimestamp to syncStartDate (midnight in TZ)', async () => {
+            vi.mocked(repo.getProjectById).mockResolvedValue(makeProject({
+                syncStartDate: '2026-01-15',
+                nextSyncTimestamp: '2026-02-01T00:00:00Z',
+                lastSyncStatus: 'success',
+            }));
+
+            await resetProject('proj-1');
+
+            // Midnight Jan 15 in VN = 17:00 Jan 14 UTC
+            expect(repo.saveProject).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    nextSyncTimestamp: '2026-01-14T17:00:00.000Z',
+                    lastSyncStatus: null,
+                    isRunning: false,
+                })
+            );
+        });
+
+        it('should reset nextSyncTimestamp to null when no syncStartDate', async () => {
             vi.mocked(repo.getProjectById).mockResolvedValue(makeProject({
                 nextSyncTimestamp: '2026-02-01T00:00:00Z',
                 lastSyncStatus: 'success',
@@ -207,7 +276,8 @@ describe('ProjectService', () => {
             expect(repo.saveProject).toHaveBeenCalledWith(
                 expect.objectContaining({
                     nextSyncTimestamp: null,
-                    lastSyncStatus: 'pending',
+                    lastSyncStatus: null,
+                    isRunning: false,
                 })
             );
         });

@@ -15,6 +15,19 @@ vi.mock('../../services/projectService.js', () => ({
     getAllProjects: vi.fn(),
 }));
 
+vi.mock('../../services/settingsService.js', () => ({
+    getSettings: vi.fn().mockResolvedValue({
+        timezone: 'Asia/Ho_Chi_Minh',
+        syncCutoffSeconds: 300,
+        defaultScheduleCron: '',
+        webhookUrl: '',
+        firebaseProjectId: 'test',
+        enableNotifications: false,
+        maxRetries: 3,
+        batchSize: 450,
+    }),
+}));
+
 import { getDashboardData } from '../../services/dashboardService.js';
 import * as repo from '../../repositories/firestoreRepository.js';
 import * as projectService from '../../services/projectService.js';

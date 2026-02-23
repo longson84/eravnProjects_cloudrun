@@ -64,6 +64,7 @@ const defaultSettings: AppSettings = {
     enableAutoSchedule: true,
     maxRetries: 3,
     batchSize: 450,
+    timezone: 'Asia/Ho_Chi_Minh',
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({

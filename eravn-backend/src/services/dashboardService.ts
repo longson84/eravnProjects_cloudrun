@@ -5,7 +5,9 @@
 
 import logger from '../logger.js';
 import * as projectService from './projectService.js';
+import { getSettings } from './settingsService.js';
 import * as repo from '../repositories/firestoreRepository.js';
+import { getTodayStartInTimezone, getDateStringInTimezone } from '../utils.js';
 import type { DashboardData, SyncProgressStats, SyncChartData } from '../types.js';
 
 /**
@@ -35,9 +37,11 @@ async function getProjectSummary(): Promise<{ totalProjects: number; activeProje
 
 async function getSyncProgress(): Promise<{ today: SyncProgressStats; last7Days: SyncProgressStats }> {
     try {
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const settings = await getSettings();
+        const timezone = settings.timezone || 'Asia/Ho_Chi_Minh';
+
+        const todayStart = getTodayStartInTimezone(timezone);
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
         const recentSessions = await repo.getSyncSessions({ startDate: sevenDaysAgo });
 
@@ -76,6 +80,9 @@ async function getSyncProgress(): Promise<{ today: SyncProgressStats; last7Days:
 
 async function getSyncChart(): Promise<SyncChartData[]> {
     try {
+        const settings = await getSettings();
+        const timezone = settings.timezone || 'Asia/Ho_Chi_Minh';
+
         const now = new Date();
         const tenDaysAgo = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
 
@@ -83,16 +90,16 @@ async function getSyncChart(): Promise<SyncChartData[]> {
 
         const dailyData: Record<string, SyncChartData> = {};
 
-        // Initialize 10 days
+        // Initialize 10 days using timezone-aware dates
         for (let i = 9; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            const dateString = d.toISOString().split('T')[0];
+            const dateString = getDateStringInTimezone(d, timezone);
             dailyData[dateString] = { date: dateString, filesCount: 0, duration: 0 };
         }
 
         for (const session of recentSessions) {
-            const dateString = session.timestamp.split('T')[0];
+            const dateString = getDateStringInTimezone(session.timestamp, timezone);
             if (dailyData[dateString]) {
                 dailyData[dateString].filesCount += session.filesCount;
                 dailyData[dateString].duration += session.executionDurationSeconds;

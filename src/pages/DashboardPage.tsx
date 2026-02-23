@@ -15,6 +15,7 @@ import {
     CheckCircle2,
     FileCheck2,
     FolderSync,
+    Loader2,
     ScrollText,
     Timer,
     TrendingUp,
@@ -82,8 +83,22 @@ const getStatusIcon = (status: string): React.ReactNode => {
     switch (status) {
         case 'success': return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
         case 'error': return <XCircle className="w-4 h-4 text-red-500" />;
+        case 'running': return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
         case 'interrupted': return <Timer className="w-4 h-4 text-amber-500" />;
         default: return <Activity className="w-4 h-4 text-muted-foreground" />;
+    }
+};
+
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+    switch (status) {
+        case 'success':
+            return <Badge variant="success"><CheckCircle2 className="w-3 h-3 mr-1" />Thành công</Badge>;
+        case 'error':
+            return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Lỗi</Badge>;
+        case 'running':
+            return <Badge variant="default" className="bg-blue-500"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang Sync</Badge>;
+        default:
+            return <Badge variant="warning"><Timer className="w-3 h-3 mr-1" />Gián đoạn</Badge>;
     }
 };
 
@@ -338,25 +353,9 @@ export function DashboardPage() {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Badge
-                                                variant={
-                                                    session.status === 'success' ? 'success' :
-                                                        session.status === 'error' ? 'destructive' : 'warning'
-                                                }
-                                            >
-                                                {session.status === 'success' ? 'Thành công' :
-                                                    session.status === 'error' ? 'Lỗi' : 'Gián đoạn'}
-                                            </Badge>
+                                            <StatusBadge status={session.status} />
                                             {session.current && (
-                                                <Badge
-                                                    variant={
-                                                        session.current === 'success' ? 'success' :
-                                                            session.current === 'error' ? 'destructive' : 'warning'
-                                                    }
-                                                >
-                                                    {session.current === 'success' ? 'Thành công' :
-                                                        session.current === 'error' ? 'Lỗi' : 'Gián đoạn'}
-                                                </Badge>
+                                                <StatusBadge status={session.current} />
                                             )}
                                             <span className="text-xs text-muted-foreground">
                                                 {formatTime(session.timestamp)}

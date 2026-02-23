@@ -128,7 +128,7 @@ export const mockSyncSessions: SyncSession[] = [
         timestamp: '2026-02-10T22:15:00Z',
         executionDurationSeconds: 120,
         status: 'error',
-        filesCount: 3,  
+        filesCount: 3,
         totalSizeSynced: 34567890, // 34.57MB
         errorMessage: 'Drive API quota exceeded (429). Retry sau 60 giây không thành công.',
     },
@@ -163,7 +163,7 @@ export const mockSyncSessions: SyncSession[] = [
         timestamp: '2026-02-10T13:30:00Z',
         executionDurationSeconds: 52,
         status: 'success',
-        filesCount: 6,  
+        filesCount: 6,
         totalSizeSynced: 6789012, // 6.79MB
     },
     {
@@ -411,6 +411,7 @@ export const mockSettings: AppSettings = {
     enableNotifications: true,
     maxRetries: 3,
     batchSize: 50,
+    timezone: 'Asia/Ho_Chi_Minh',
 };
 
 // export const mockDashboardStats: DashboardStats = {

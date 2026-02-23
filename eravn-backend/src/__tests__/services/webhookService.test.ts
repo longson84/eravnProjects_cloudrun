@@ -44,6 +44,7 @@ describe('WebhookService', () => {
             enableNotifications: true,
             maxRetries: 3,
             batchSize: 450,
+            timezone: 'Asia/Ho_Chi_Minh',
         });
         vi.mocked(axios.post).mockResolvedValue({ status: 200 });
     });
@@ -83,6 +84,7 @@ describe('WebhookService', () => {
                 enableNotifications: true,
                 maxRetries: 3,
                 batchSize: 450,
+                timezone: 'Asia/Ho_Chi_Minh',
             });
 
             await sendSyncSummary([mockSession()], 'run-1');
@@ -116,6 +118,7 @@ describe('WebhookService', () => {
                 enableNotifications: true,
                 maxRetries: 3,
                 batchSize: 450,
+                timezone: 'Asia/Ho_Chi_Minh',
             });
 
             await sendWebhookNotification('Hello!');

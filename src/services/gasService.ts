@@ -113,6 +113,7 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
             recentSyncs: mockSyncSessions.slice(0, 10),
         }),
         resetDatabase: () => true,
+        softReset: () => true,
         resetProject: () => ({ success: true }),
         testWebhook: () => true,
     };
@@ -227,6 +228,12 @@ export const gasService = {
     resetDatabase: async (): Promise<boolean> => {
         if (!isApiConfigured()) return getMockResponse('resetDatabase');
         const { data } = await api.post('system/reset-database');
+        return data.success;
+    },
+
+    softReset: async (): Promise<boolean> => {
+        if (!isApiConfigured()) return getMockResponse('softReset');
+        const { data } = await api.post('system/soft-reset');
         return data.success;
     },
 

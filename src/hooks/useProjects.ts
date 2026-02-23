@@ -7,11 +7,11 @@ export function useProjects() {
         queryKey: ['projects'],
         queryFn: gasService.getProjects,
         staleTime: 1000 * 60 * 5, // 5 minutes
-        // Auto-refresh every 15s when any project is syncing (pending)
+        // Auto-refresh every 5s when any project has isRunning=true
         refetchInterval: (query) => {
             const data = query.state.data;
-            if (Array.isArray(data) && data.some((p: any) => p.lastSyncStatus === 'pending')) {
-                return 15_000;
+            if (Array.isArray(data) && data.some((p: any) => p.isRunning === true)) {
+                return 5_000;
             }
             return false;
         },
@@ -63,13 +63,31 @@ export function useSyncProject() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (id: string) => gasService.runSyncProject(id),
+        onMutate: (id: string) => {
+            // Optimistic update: mark project as running immediately in local cache
+            // This gives instant UI feedback (disabled buttons, Stop button appears)
+            // without touching DB, so Continue Mode detection is preserved in backend
+            queryClient.setQueryData(['projects'], (old: any) =>
+                Array.isArray(old)
+                    ? old.map((p: any) => p.id === id ? { ...p, isRunning: true } : p)
+                    : old
+            );
+        },
         onSuccess: () => {
-            // Small delay to ensure controller has persisted 'pending' status to DB
+            // After API returns, refetch to get real DB state (isRunning set by syncSingleProject)
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['projects'] });
                 queryClient.invalidateQueries({ queryKey: ['syncLogs'] });
                 queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
-            }, 500);
+            }, 10_000);
+        },
+        onError: (_err: unknown, id: string) => {
+            // Rollback optimistic update on error
+            queryClient.setQueryData(['projects'], (old: any) =>
+                Array.isArray(old)
+                    ? old.map((p: any) => p.id === id ? { ...p, isRunning: false } : p)
+                    : old
+            );
         },
     });
 }

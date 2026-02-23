@@ -15,12 +15,13 @@ export interface Project {
     lastSyncTimestamp: string | null;
     lastSuccessSyncTimestamp?: string | null;
     nextSyncTimestamp?: string | null;
-    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'pending' | null;
+    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'running' | null;
     filesCount: number;
     totalSize: number; // Total size of all files synced for this project
     createdAt: string;
     updatedAt: string;
     syncStartDate?: string; // Only sync files modified/created on or after this date (ISO string YYYY-MM-DD)
+    isRunning?: boolean;
     isDeleted?: boolean;
     stats?: {
         todayFiles: number;
@@ -102,6 +103,7 @@ export interface AppSettings {
     enableAutoSchedule?: boolean;
     maxRetries: number;
     batchSize: number;
+    timezone: string; // IANA timezone, e.g. 'Asia/Ho_Chi_Minh'
 }
 
 // ==========================================

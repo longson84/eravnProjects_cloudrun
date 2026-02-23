@@ -158,6 +158,7 @@ async function syncSingleProject(
     const finalCutoffSeconds = settingsCutoff > 0 ? settingsCutoff : (configCutoff > 0 ? configCutoff : 300);
     const cutoffMs = finalCutoffSeconds * 1000;
     const sessionTimestamp = getCurrentTimestamp();
+    const timezone = settings.timezone || 'Asia/Ho_Chi_Minh';
 
     logger.info(`[Sync:${project.id}] START. Cutoff: ${finalCutoffSeconds}s (Settings: ${settingsCutoff}s, Config: ${configCutoff}s). StartTime: ${startTime}`);
 
@@ -173,16 +174,23 @@ async function syncSingleProject(
     const lastSyncStatus = project.lastSyncStatus || null;
 
     // Atomic Lock Check: Prevent concurrent syncs for the same project
-    // If status is 'pending', another instance is already running
-    if (lastSyncStatus === 'pending') {
+    // Uses isRunning field — fully managed by syncSingleProject, not the controller
+    if (project.isRunning === true) {
         const lastUpdate = new Date(project.updatedAt).getTime();
         const now = Date.now();
-        // Safety: If it's been 'pending' for more than 2 hours, assume it's stalled and allow takeover
+        // Safety: If isRunning has been true for more than 2 hours, assume stalled and allow takeover
         if (now - lastUpdate < 2 * 60 * 60 * 1000) {
-            logger.warn(`[Sync:${project.id}] ABORTED. Another sync is already in progress.`);
+            logger.warn(`[Sync:${project.id}] ABORTED. isRunning=true — another sync is already in progress.`);
             throw new Error('Dự án này đang trong quá trình đồng bộ bởi một tiến trình khác.');
         }
+        logger.warn(`[Sync:${project.id}] isRunning stale (>2h), allowing takeover.`);
     }
+
+    // SET LOCK: Mark project as running immediately after passing lock check
+    await projectService.updateProject({
+        id: project.id,
+        isRunning: true,
+    });
 
     const baseTimestamp = Math.max(checkpointTime, syncStartTime);
 
@@ -216,7 +224,6 @@ async function syncSingleProject(
     };
 
     // PERSISTENCE START: Save session immediately so Sync Logs can show it
-    // Note: lastSyncStatus='pending' is already set by the controller before fire-and-forget
     await repo.saveSyncSession(session);
 
     const fileLogsBatch: Partial<FileLog>[] = [];
@@ -338,7 +345,7 @@ async function syncSingleProject(
                 let destFileName = file.name;
                 const existingFiles = await driveService.findFilesByName(file.name, destFolderId);
                 if (existingFiles.length > 0) {
-                    const timestamp = formatTimestampForFilename(new Date());
+                    const timestamp = formatTimestampForFilename(new Date(), timezone);
                     const dotIdx = file.name.lastIndexOf('.');
                     if (dotIdx !== -1) {
                         const name = file.name.substring(0, dotIdx);
@@ -394,6 +401,21 @@ async function syncSingleProject(
             logger.info(`Found ${pendingSessions.length} pending sessions.`);
 
             if (pendingSessions.length > 0) {
+                // PROACTIVE LINKING: Update pending sessions immediately so UI shows "Đang tiếp tục..."
+                for (let i = 0; i < pendingSessions.length; i++) {
+                    const pSession = pendingSessions[i];
+                    const updates: Partial<SyncSession> = { current: 'running' };
+                    if (i === 0) {
+                        updates.continueId = session.runId;
+                        logger.info(`[Proactive] Linking pending session ${pSession.runId} to new session ${session.runId}`);
+                    }
+                    try {
+                        await repo.updateSyncSession(pSession.id, updates);
+                    } catch (e) {
+                        logger.error(`Failed to proactively update pending session ${pSession.id}: ${(e as Error).message}`);
+                    }
+                }
+
                 for (const ps of pendingSessions) {
                     const logs = await repo.getFileLogsBySession(ps.id);
                     for (const log of logs) {
@@ -438,29 +460,24 @@ async function syncSingleProject(
 
     await repo.saveProjectHeartbeat(project.id, session.status);
 
-    // Post-Processing for Continue Mode
+    // Final Post-Processing for Continue Mode: Update with FINAL status
     if (isContinueMode && pendingSessions.length > 0) {
-        logger.info(`Post-processing Continue Mode. Pending Sessions: ${pendingSessions.length}`);
-        for (let i = 0; i < pendingSessions.length; i++) {
-            const pSession = pendingSessions[i];
-            const updates: Partial<SyncSession> = { current: session.status };
-            if (i === 0) {
-                updates.continueId = session.runId;
-                logger.info(`Linking pending session ${pSession.runId} to new session ${session.runId}`);
-            }
+        logger.info(`Finalizing Continue Mode status to: ${session.status}`);
+        for (const pSession of pendingSessions) {
             try {
-                await repo.updateSyncSession(pSession.id, updates);
+                await repo.updateSyncSession(pSession.id, { current: session.status });
             } catch (e) {
-                logger.error(`Failed to update pending session ${pSession.id}: ${(e as Error).message}`);
+                logger.error(`Failed to update final status for pending session ${pSession.id}: ${(e as Error).message}`);
             }
         }
     }
 
-    // Update project metadata
+    // Update project metadata — also UNLOCK by setting isRunning: false
     const projectUpdates: Partial<Project> = {
         id: project.id,
         lastSyncTimestamp: session.timestamp,
         lastSyncStatus: session.status as any,
+        isRunning: false,
         filesCount: (project.filesCount || 0) + session.filesCount,
         totalSize: (project.totalSize || 0) + session.totalSizeSynced,
     };

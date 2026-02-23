@@ -16,12 +16,13 @@ export interface Project {
     lastSyncTimestamp: string | null;
     lastSuccessSyncTimestamp?: string | null;
     nextSyncTimestamp?: string | null;
-    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'pending' | 'running' | null;
+    lastSyncStatus: 'success' | 'interrupted' | 'error' | 'running' | null;
     filesCount: number;
     totalSize: number;
     createdAt: string;
     updatedAt: string;
     syncStartDate?: string;
+    isRunning?: boolean;
     isDeleted?: boolean;
     stats?: {
         todayFiles: number;
@@ -93,6 +94,7 @@ export interface AppSettings {
     enableAutoSchedule?: boolean;
     maxRetries: number;
     batchSize: number;
+    timezone: string; // IANA timezone, e.g. 'Asia/Ho_Chi_Minh'
 }
 
 /** Heartbeat status */
