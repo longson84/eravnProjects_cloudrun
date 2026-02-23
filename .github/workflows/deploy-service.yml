@@ -10,7 +10,7 @@ on:
       - master
     paths:
       - 'eravn-backend/**'                      # Chỉ chạy khi folder backend thay đổi
-      - '.github/workflows/deploy-service.yml'   # Hoặc khi workflow file thay đổi
+      - '.github/workflows/deploy-service.yml'  # Hoặc khi workflow file thay đổi
 
 # ─── BIẾN DÙNG CHUNG ───
 env:
