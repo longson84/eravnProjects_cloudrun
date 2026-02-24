@@ -243,10 +243,10 @@ async function syncSingleProject(
             session.executionDurationSeconds = Math.round((Date.now() - startTime) / 1000);
             await repo.saveSyncSession(session);
 
-            logger.info(`[Sync:${project.name}] Progressive save: ${session.filesCount} files synced. (RunID: ${session.runId}, TotalSize: ${session.totalSizeSynced} bytes)`);
+            logger.info(`${project.name}: Progressive save: ${session.filesCount} files synced. (RunID: ${session.runId}, TotalSize: ${session.totalSizeSynced} bytes)`);
         } catch (e) {
             const fileLogError = (e as Error).message;
-            logger.error(`[Sync:${project.id}] Progressive save FAILED: ${fileLogError}`);
+            logger.error(`${project.name}: Progressive save FAILED: ${fileLogError}`);
             // Reflect file log failure in session status
             if (session.status === 'success' || session.status === 'running') {
                 session.status = 'warning';
@@ -497,7 +497,7 @@ async function syncSingleProject(
         logger.error(`Failed to update project metadata: ${(e as Error).message}`);
     }
 
-    logger.info(`[Sync:${project.name}] COMPLETED. Synced ${session.filesCount} files, total size ${session.totalSizeSynced} bytes, status ${session.status} (RunID: ${session.runId})`);
+    logger.info(`${project.name}: Sync Completed. Synced ${session.filesCount} files, total size ${session.totalSizeSynced} bytes, status ${session.status} (RunID: ${session.runId})`);
     return session;
 }
 
