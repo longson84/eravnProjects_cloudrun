@@ -84,7 +84,7 @@ router.post('/stop/:projectId', async (req: Request, res: Response) => {
         const projectId = req.params.projectId as string;
         logger.info(`Stop sync requested for project: ${projectId}`);
 
-        requestStop(projectId);
+        await requestStop(projectId);
 
         res.json({
             success: true,

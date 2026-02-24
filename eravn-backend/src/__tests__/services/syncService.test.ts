@@ -42,7 +42,7 @@ vi.mock('../../services/settingsService.js', () => ({
 }));
 
 vi.mock('../../services/stopSignalRegistry.js', () => ({
-    shouldStop: vi.fn().mockReturnValue(false),
+    shouldStop: vi.fn().mockResolvedValue(false),
     clearStop: vi.fn(),
 }));
 
@@ -543,7 +543,7 @@ describe('SyncService', () => {
             ]);
 
             // Stop signal is set — should trigger on first check in syncFolder or processFiles
-            vi.mocked(shouldStop).mockReturnValue(true);
+            vi.mocked(shouldStop).mockResolvedValue(true);
 
             const result = await syncProjectById('proj-1');
 
@@ -566,7 +566,7 @@ describe('SyncService', () => {
             ]);
 
             // Stop signal triggers on check
-            vi.mocked(shouldStop).mockReturnValue(true);
+            vi.mocked(shouldStop).mockResolvedValue(true);
 
             await syncProjectById('proj-1');
 
