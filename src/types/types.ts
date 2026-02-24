@@ -71,12 +71,6 @@ export interface SyncLogFilters {
     search: string;
 }
 
-/** Heartbeat status from PropertiesService (quota-free health check) */
-export interface ProjectHeartbeat {
-    projectId: string;
-    lastCheckTimestamp: string;
-    lastStatus: string;
-}
 
 /** File sync log (child of SyncSession) */
 export interface FileLog {

@@ -143,14 +143,14 @@ export async function resetProject(id: string): Promise<Project> {
 }
 
 /**
- * Soft Reset: Delete all sync logs, file logs, heartbeats, 
+ * Soft Reset: Delete all sync logs, file logs, 
  * and reset all project sync metadata while keeping basic project info.
  */
 export async function softReset(): Promise<boolean> {
     try {
         logger.info('Starting Soft Reset process...');
 
-        // 1. Clear all sync logs, file logs and heartbeats
+        // 1. Clear all sync logs, file logs
         await repo.clearSyncData();
 
         // 2. Reset all projects

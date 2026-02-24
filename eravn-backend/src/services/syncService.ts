@@ -458,8 +458,6 @@ async function syncSingleProject(
     // Final session save to update duration and successful status
     await repo.saveSyncSession(session);
 
-    await repo.saveProjectHeartbeat(project.id, session.status);
-
     // Final Post-Processing for Continue Mode: Update with FINAL status
     if (isContinueMode && pendingSessions.length > 0) {
         logger.info(`Finalizing Continue Mode status to: ${session.status}`);

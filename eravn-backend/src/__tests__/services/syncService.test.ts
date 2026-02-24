@@ -15,8 +15,7 @@ vi.mock('../../repositories/firestoreRepository.js', () => ({
     updateSyncSession: vi.fn(),
     batchSaveFileLogs: vi.fn(),
     getPendingSyncSessions: vi.fn(),
-    getFileLogsBySession: vi.fn(),
-    saveProjectHeartbeat: vi.fn(),
+    getFileLogsBySession: vi.fn()
 }));
 
 vi.mock('../../services/driveService.js', () => ({
@@ -98,7 +97,6 @@ describe('SyncService', () => {
         vi.mocked(repo.batchSaveFileLogs).mockResolvedValue();
         vi.mocked(repo.getPendingSyncSessions).mockResolvedValue([]);
         vi.mocked(repo.getFileLogsBySession).mockResolvedValue([]);
-        vi.mocked(repo.saveProjectHeartbeat).mockResolvedValue();
         vi.mocked(driveService.listModifiedFiles).mockResolvedValue([]);
         vi.mocked(driveService.listSubFolders).mockResolvedValue([]);
         vi.mocked(driveService.copyFileToDest).mockResolvedValue({ id: 'copy-id', name: 'file.pdf', mimeType: 'application/pdf', webViewLink: 'https://drive.google.com/file/d/copy-id/view' });
@@ -513,13 +511,6 @@ describe('SyncService', () => {
             );
         });
 
-        it('should save heartbeat after sync', async () => {
-            vi.mocked(projectService.getProjectById).mockResolvedValue(makeProject());
-
-            await syncProjectById('proj-1');
-
-            expect(repo.saveProjectHeartbeat).toHaveBeenCalledWith('proj-1', expect.any(String));
-        });
 
         it('should recover project from error status on successful sync', async () => {
             vi.mocked(projectService.getProjectById).mockResolvedValue(makeProject({ status: 'error' }));

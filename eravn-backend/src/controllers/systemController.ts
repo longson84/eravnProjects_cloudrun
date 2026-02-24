@@ -31,17 +31,6 @@ router.post('/soft-reset', async (req: Request, res: Response) => {
     }
 });
 
-// GET /api/system/heartbeats
-router.get('/heartbeats', async (req: Request, res: Response) => {
-    try {
-        const heartbeats = await repo.getAllProjectHeartbeats();
-        res.json(heartbeats);
-    } catch (e) {
-        logger.error('GET /system/heartbeats failed', { error: (e as Error).message });
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-
 // GET /api/system/check-firestore
 router.get('/check-firestore', async (req: Request, res: Response) => {
     try {

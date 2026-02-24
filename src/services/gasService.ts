@@ -90,11 +90,6 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
         },
         continueSync: () => true,
         stopSync: () => true,
-        getProjectHeartbeats: () => mockProjects.map(p => ({
-            projectId: p.id,
-            lastCheckTimestamp: new Date().toISOString(),
-            lastStatus: p.lastSyncStatus || 'success',
-        })),
         getDashboardData: () => ({
             projectSummary: { totalProjects: mockProjects.length, activeProjects: mockProjects.filter(p => p.status === 'active').length },
             syncProgress: {
@@ -210,12 +205,6 @@ export const gasService = {
         return data.success;
     },
 
-    // Heartbeat
-    getProjectHeartbeats: async (): Promise<ProjectHeartbeat[]> => {
-        if (!isApiConfigured()) return getMockResponse('getProjectHeartbeats');
-        const { data } = await api.get('system/heartbeats');
-        return data;
-    },
 
     // Dashboard
     getDashboardData: async (): Promise<DashboardData> => {

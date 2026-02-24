@@ -10,8 +10,7 @@ import type {
     Project,
     SyncSession,
     FileLog,
-    AppSettings,
-    ProjectHeartbeat,
+    AppSettings
 } from '../types.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -232,40 +231,13 @@ export function getDefaultSettings(): AppSettings {
     };
 }
 
-// ==========================================
-// Heartbeat (Firestore-based, replaces PropertiesService)
-// ==========================================
-
-export async function saveProjectHeartbeat(projectId: string, status: string): Promise<void> {
-    try {
-        await db.collection('heartbeats').doc(projectId).set({
-            lastCheckTimestamp: new Date().toISOString(),
-            lastStatus: status,
-        });
-    } catch (e) {
-        logger.warn(`Heartbeat save failed for ${projectId}`, { error: (e as Error).message });
-    }
-}
-
-export async function getAllProjectHeartbeats(): Promise<ProjectHeartbeat[]> {
-    try {
-        const snapshot = await db.collection('heartbeats').get();
-        return snapshot.docs.map(doc => ({
-            projectId: doc.id,
-            ...doc.data(),
-        } as ProjectHeartbeat));
-    } catch (e) {
-        logger.warn('Heartbeat read failed', { error: (e as Error).message });
-        return [];
-    }
-}
 
 // ==========================================
 // Dangerous Operations (Reset DB)
 // ==========================================
 
 export async function resetDatabase(): Promise<boolean> {
-    const collections = ['projects', 'syncSessions', 'fileLogs', 'heartbeats'];
+    const collections = ['projects', 'syncSessions', 'fileLogs'];
 
     for (const collectionName of collections) {
         await deleteAllDocumentsInCollection(collectionName);
@@ -278,7 +250,7 @@ export async function resetDatabase(): Promise<boolean> {
  * Clear only sync-related data (keeping projects)
  */
 export async function clearSyncData(): Promise<void> {
-    const collections = ['syncSessions', 'fileLogs', 'heartbeats'];
+    const collections = ['syncSessions', 'fileLogs'];
     for (const collectionName of collections) {
         await deleteAllDocumentsInCollection(collectionName);
     }
