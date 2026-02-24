@@ -1,0 +1,162 @@
+name: Deploy to Cloud Run
+
+# ─── KHI NÀO CHẠY? ───
+# Push lên build  → deploy STAGING (Service + Job)
+# Push lên master → deploy PRODUCTION (Service only)
+on:
+  push:
+    branches:
+      - build
+      - master
+    paths:
+      - 'eravn-backend/**'
+      - '.github/workflows/deploy.yml'
+
+# ─── BIẾN DÙNG CHUNG ───
+env:
+  REGION: asia-southeast1
+  IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/cloud-run-source-deploy/eravn-backend
+
+# ═══════════════════════════════════════════
+# 3 JOBS chạy theo thứ tự:
+#   1. build-image      → Build & push Docker image
+#   2. deploy-service   → Deploy Cloud Run Service (needs: build-image)
+#   3. deploy-job       → Deploy Cloud Run Job    (needs: build-image, chỉ branch build)
+# ═══════════════════════════════════════════
+
+jobs:
+  # ──────────────────────────────────────────
+  # JOB 1: Build & Push Docker Image
+  # ──────────────────────────────────────────
+  # Chạy đầu tiên. Cả Service lẫn Job đều dùng image từ job này.
+  build-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker asia-southeast1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f eravn-backend/Dockerfile \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            eravn-backend/
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+  # ──────────────────────────────────────────
+  # JOB 2: Deploy Cloud Run Service
+  # ──────────────────────────────────────────
+  # Chờ build-image xong mới chạy.
+  # Branch build  → deploy Staging
+  # Branch master → deploy Production
+  deploy-service:
+    needs: build-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Staging
+        if: github.ref == 'refs/heads/build'
+        run: |
+          gcloud run deploy eravn-backend-staging \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-instances 1 \
+            --timeout 900
+
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/master'
+        run: |
+          gcloud run deploy eravn-backend \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --memory 1Gi \
+            --cpu 1 \
+            --max-instances 1 \
+            --timeout 900
+
+  # ──────────────────────────────────────────
+  # JOB 3: Deploy Cloud Run Job
+  # ──────────────────────────────────────────
+  # Chờ build-image xong mới chạy.
+  # CHỈ chạy trên branch build (không cần deploy lại khi merge master).
+  deploy-job:
+    needs: build-image
+    if: github.ref == 'refs/heads/build'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Job
+        env:
+          ENV_VARS: "RUN_MODE=job,GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,SYNC_CUTOFF_SECONDS=3600,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}"
+        run: |
+          gcloud run jobs update eravnprojects-sync-job \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-env-vars "$ENV_VARS" \
+            --task-timeout=7200s \
+            --max-retries=1 \
+            --cpu=1 \
+            --memory=1Gi
+
+      - name: Show Job Info
+        run: |
+          echo "✅ Job deployed: eravnprojects-sync-job"
+          echo ""
+          echo "🔗 Chạy thử thủ công:"
+          echo "   gcloud run jobs execute eravnprojects-sync-job --region ${{ env.REGION }}"
