@@ -19,7 +19,6 @@ vi.mock('../../services/settingsService.js', () => ({
     getSettings: vi.fn().mockResolvedValue({
         timezone: 'Asia/Ho_Chi_Minh',
         syncCutoffSeconds: 300,
-        defaultScheduleCron: '',
         webhookUrl: '',
         firebaseProjectId: 'test',
         enableNotifications: false,

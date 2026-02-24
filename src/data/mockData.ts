@@ -405,7 +405,6 @@ export const mockFileLogs: FileLog[] = [
 
 export const mockSettings: AppSettings = {
     syncCutoffSeconds: 300,
-    defaultScheduleCron: '0 */6 * * *',
     webhookUrl: 'https://chat.googleapis.com/v1/spaces/XXXX/messages?key=YYYY&token=ZZZZ',
     firebaseProjectId: 'eravnprojects-prod',
     enableNotifications: true,

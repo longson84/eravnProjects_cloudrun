@@ -18,7 +18,6 @@ import type { AppSettings } from '../../types.js';
 
 const mockSettings: AppSettings = {
     syncCutoffSeconds: 300,
-    defaultScheduleCron: '*/5 * * * *',
     webhookUrl: 'https://chat.googleapis.com/test',
     firebaseProjectId: 'test-project',
     enableNotifications: true,

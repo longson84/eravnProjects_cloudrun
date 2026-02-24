@@ -56,7 +56,6 @@ import type { Project, SyncSession, FileLog, AppSettings } from '../../types.js'
 
 const defaultSettings: AppSettings = {
     syncCutoffSeconds: 300,
-    defaultScheduleCron: '*/5 * * * *',
     webhookUrl: 'https://webhook.test',
     firebaseProjectId: 'test',
     enableNotifications: false,

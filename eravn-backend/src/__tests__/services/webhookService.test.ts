@@ -39,7 +39,6 @@ describe('WebhookService', () => {
         vi.mocked(getSettings).mockResolvedValue({
             webhookUrl: 'https://chat.googleapis.com/webhook/test',
             syncCutoffSeconds: 300,
-            defaultScheduleCron: '',
             firebaseProjectId: 'test',
             enableNotifications: true,
             maxRetries: 3,
@@ -79,7 +78,6 @@ describe('WebhookService', () => {
             vi.mocked(getSettings).mockResolvedValue({
                 webhookUrl: '',
                 syncCutoffSeconds: 300,
-                defaultScheduleCron: '',
                 firebaseProjectId: 'test',
                 enableNotifications: true,
                 maxRetries: 3,
@@ -113,7 +111,6 @@ describe('WebhookService', () => {
             vi.mocked(getSettings).mockResolvedValue({
                 webhookUrl: '',
                 syncCutoffSeconds: 300,
-                defaultScheduleCron: '',
                 firebaseProjectId: 'test',
                 enableNotifications: true,
                 maxRetries: 3,

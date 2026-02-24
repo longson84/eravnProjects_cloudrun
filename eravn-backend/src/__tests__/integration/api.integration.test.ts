@@ -49,7 +49,6 @@ vi.mock('../../repositories/firestoreRepository.js', () => ({
     resetDatabase: vi.fn(),
     getSettingsFromDb: vi.fn().mockResolvedValue({
         syncCutoffSeconds: 300,
-        defaultScheduleCron: '',
         webhookUrl: '',
         firebaseProjectId: 'test',
         enableNotifications: false,
@@ -244,7 +243,6 @@ describe('API Integration Tests', () => {
     describe('Settings API', () => {
         const mockSettings: AppSettings = {
             syncCutoffSeconds: 300,
-            defaultScheduleCron: '',
             webhookUrl: '',
             firebaseProjectId: 'test',
             enableNotifications: false,

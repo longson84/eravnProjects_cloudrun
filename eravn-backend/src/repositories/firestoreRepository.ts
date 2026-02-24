@@ -220,7 +220,6 @@ export async function saveSettingsToDb(settings: AppSettings): Promise<AppSettin
 export function getDefaultSettings(): AppSettings {
     return {
         syncCutoffSeconds: CONFIG.SYNC_CUTOFF_SECONDS,
-        defaultScheduleCron: '0 */6 * * *',
         webhookUrl: CONFIG.WEBHOOK_URL,
         firebaseProjectId: CONFIG.GCP_PROJECT_ID,
         enableNotifications: true,

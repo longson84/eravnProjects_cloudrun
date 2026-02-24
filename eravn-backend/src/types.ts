@@ -87,7 +87,6 @@ export interface FileLog {
 /** Global app settings */
 export interface AppSettings {
     syncCutoffSeconds: number;
-    defaultScheduleCron: string;
     webhookUrl: string;
     firebaseProjectId: string;
     enableNotifications: boolean;

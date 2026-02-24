@@ -1,8 +1,8 @@
-name: Deploy to Cloud Run
+name: Deploy to Cloud Run & Firebase Hosting
 
 # ─── KHI NÀO CHẠY? ───
-# Push lên build  → deploy STAGING (Service + Job)
-# Push lên master → deploy PRODUCTION (Service only)
+# Push lên build  → deploy STAGING (Service + Job) + Frontend
+# Push lên master → deploy PRODUCTION (Service only) + Frontend
 on:
   push:
     branches:
@@ -10,6 +10,10 @@ on:
       - master
     paths:
       - 'eravn-backend/**'
+      - 'src/**'
+      - 'index.html'
+      - 'package.json'
+      - 'vite.config.ts'
       - '.github/workflows/deploy.yml'
 
 # ─── BIẾN DÙNG CHUNG ───
@@ -18,10 +22,11 @@ env:
   IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/cloud-run-source-deploy/eravn-backend
 
 # ═══════════════════════════════════════════
-# 3 JOBS chạy theo thứ tự:
-#   1. build-image      → Build & push Docker image
+# 4 JOBS:
+#   1. build-image      → Build & push Docker image (chỉ khi backend thay đổi)
 #   2. deploy-service   → Deploy Cloud Run Service (needs: build-image)
 #   3. deploy-job       → Deploy Cloud Run Job    (needs: build-image, chỉ branch build)
+#   4. deploy-frontend  → Build & Deploy Frontend lên Firebase Hosting
 # ═══════════════════════════════════════════
 
 jobs:
@@ -96,7 +101,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://eravn-projects-cloud-run.web.app;https://sync.era.com.vn,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
@@ -111,7 +116,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://eravn-projects-cloud-run.web.app;https://sync.era.com.vn,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
@@ -160,3 +165,50 @@ jobs:
           echo ""
           echo "🔗 Chạy thử thủ công:"
           echo "   gcloud run jobs execute eravnprojects-sync-job --region ${{ env.REGION }}"
+
+  # ──────────────────────────────────────────
+  # JOB 4: Deploy Frontend → Firebase Hosting
+  # ──────────────────────────────────────────
+  # Chạy song song, không phụ thuộc backend.
+  # Build Vite → deploy lên Firebase Hosting.
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend (Production)
+        if: github.ref == 'refs/heads/master'
+        run: npm run build
+        env:
+          VITE_API_URL: https://eravn-backend-166671254430.asia-southeast1.run.app
+
+      - name: Build frontend (Staging)
+        if: github.ref == 'refs/heads/build'
+        run: npx vite build --mode build
+        env:
+          VITE_API_URL: https://eravn-backend-staging-166671254430.asia-southeast1.run.app
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Firebase Hosting
+        run: |
+          npm install -g firebase-tools
+          firebase deploy --only hosting --project ${{ secrets.GCP_PROJECT_ID }}

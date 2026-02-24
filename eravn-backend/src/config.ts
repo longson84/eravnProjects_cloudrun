@@ -20,7 +20,7 @@ export const CONFIG = {
     SYNC_CONCURRENCY: parseInt(process.env.SYNC_CONCURRENCY || '5', 10),
 
     // CORS
-    CORS_ORIGINS: (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim()),
+    CORS_ORIGINS: (process.env.CORS_ORIGINS || 'http://localhost:5173').split(';').map(s => s.trim()),
 
     // Drive
     FOLDER_MIME_TYPE: 'application/vnd.google-apps.folder',

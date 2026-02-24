@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save, Bell, Clock, Database, RotateCcw, CheckCircle2, AlertTriangle, Trash2, Loader2, Globe, FlaskConical } from 'lucide-react';
+import { Settings, Save, Bell, Clock, RotateCcw, CheckCircle2, AlertTriangle, Trash2, Loader2, Globe, FlaskConical } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,6 @@ export function SettingsPage() {
 
     const [form, setForm] = useState<AppSettings>({
         syncCutoffSeconds: 300,
-        defaultScheduleCron: '0 */6 * * *',
         webhookUrl: '',
         firebaseProjectId: '',
         enableNotifications: false,
@@ -34,7 +33,6 @@ export function SettingsPage() {
     useEffect(() => {
         if (settings) {
             setForm(settings);
-            setScheduleMinutes(cronToMinutes(settings.defaultScheduleCron));
         }
     }, [settings]);
 
@@ -46,46 +44,11 @@ export function SettingsPage() {
     const [resetConfirmText, setResetConfirmText] = useState('');
     const [isTestingWebhook, setIsTestingWebhook] = useState(false);
 
-    // Cron Helpers
-    const cronToMinutes = (cron: string): number => {
-        if (!cron) return 360; // Default 6 hours
-        // Match */N * * * * (Minutes)
-        const minMatch = cron.match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
-        if (minMatch) return parseInt(minMatch[1], 10);
 
-        // Match 0 */N * * * (Hours)
-        const hourMatch = cron.match(/^0\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
-        if (hourMatch) return parseInt(hourMatch[1], 10) * 60;
-
-        return 360; // Fallback
-    };
-
-    const minutesToCron = (minutes: number): string => {
-        if (minutes < 60) {
-            return `*/${minutes} * * * *`;
-        }
-        const hours = Math.floor(minutes / 60);
-        return `0 */${hours} * * *`;
-    };
-
-    const [scheduleMinutes, setScheduleMinutes] = useState(360);
 
     const handleSave = async () => {
         try {
-            // Validate schedule minutes (min 5)
-            let finalMinutes = scheduleMinutes;
-            if (finalMinutes < 5) {
-                finalMinutes = 5;
-                setScheduleMinutes(5);
-            }
-
-            // Update form with latest minutes value converted to cron
-            const updatedForm = {
-                ...form,
-                defaultScheduleCron: minutesToCron(finalMinutes)
-            };
-
-            await updateSettingsMutation.mutateAsync(updatedForm);
+            await updateSettingsMutation.mutateAsync(form);
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
         } catch (error) {
@@ -96,7 +59,6 @@ export function SettingsPage() {
     const handleReset = () => {
         if (settings) {
             setForm({ ...settings });
-            setScheduleMinutes(cronToMinutes(settings.defaultScheduleCron));
         }
     };
 
