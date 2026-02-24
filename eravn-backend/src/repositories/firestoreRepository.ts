@@ -179,7 +179,8 @@ export async function batchSaveFileLogs(sessionId: string, fileLogs: Partial<Fil
         }
 
         await batch.commit();
-        logger.info(`{projectInfo.name}: batch saved ${chunk.length} file logs (session: ${sessionId}, size: ${chunkSizeBytes} bytes)`);
+        const projectName = projectInfo?.name || 'Unknown';
+        logger.info(`${projectName}: batch saved ${chunk.length} file logs (session: ${sessionId}, size: ${chunkSizeBytes} bytes)`);
     }
 }
 

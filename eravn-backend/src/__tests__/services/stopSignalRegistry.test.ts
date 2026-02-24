@@ -31,7 +31,7 @@ describe('StopSignalRegistry (Firestore Integration)', () => {
     it('requestStop should write a document to stopSignals collection', async () => {
         mockDoc.set.mockResolvedValue({} as any);
 
-        await requestStop(projectId);
+        await requestStop(projectId, 'Test Project');
 
         expect(db.collection).toHaveBeenCalledWith('stopSignals');
         expect(mockCollection.doc).toHaveBeenCalledWith(projectId);
@@ -43,7 +43,7 @@ describe('StopSignalRegistry (Firestore Integration)', () => {
     it('shouldStop should return true if document exists', async () => {
         mockDoc.get.mockResolvedValue({ exists: true } as any);
 
-        const result = await shouldStop(projectId);
+        const result = await shouldStop(projectId, 'Test Project');
 
         expect(result).toBe(true);
         expect(mockDoc.get).toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe('StopSignalRegistry (Firestore Integration)', () => {
     it('shouldStop should return false if document does not exist', async () => {
         mockDoc.get.mockResolvedValue({ exists: false } as any);
 
-        const result = await shouldStop(projectId);
+        const result = await shouldStop(projectId, 'Test Project');
 
         expect(result).toBe(false);
     });
@@ -60,7 +60,7 @@ describe('StopSignalRegistry (Firestore Integration)', () => {
     it('clearStop should delete the document from Firestore', async () => {
         mockDoc.delete.mockResolvedValue({} as any);
 
-        await clearStop(projectId);
+        await clearStop(projectId, 'Test Project');
 
         expect(db.collection).toHaveBeenCalledWith('stopSignals');
         expect(mockCollection.doc).toHaveBeenCalledWith(projectId);
@@ -70,7 +70,7 @@ describe('StopSignalRegistry (Firestore Integration)', () => {
     it('shouldStop should return false and log error on database failure', async () => {
         mockDoc.get.mockRejectedValue(new Error('Firestore down'));
 
-        const result = await shouldStop(projectId);
+        const result = await shouldStop(projectId, 'Test Project');
 
         expect(result).toBe(false); // An toàn: lỗi DB thì mặc định là không dừng
     });

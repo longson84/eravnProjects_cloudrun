@@ -82,9 +82,12 @@ router.post('/:projectId', async (req: Request, res: Response) => {
 router.post('/stop/:projectId', async (req: Request, res: Response) => {
     try {
         const projectId = req.params.projectId as string;
-        logger.info(`Stop sync requested for project: ${projectId}`);
+        const project = await projectService.getProjectById(projectId);
+        const projectName = project ? project.name : 'Unknown';
 
-        await requestStop(projectId);
+        logger.info(`${projectName}: Stop sync requested from UI`);
+
+        await requestStop(projectId, projectName);
 
         res.json({
             success: true,

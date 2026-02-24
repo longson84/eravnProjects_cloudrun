@@ -199,7 +199,7 @@ async function syncSingleProject(
     const successFilesMap: Record<string, FileLog> = {};
     const effectiveTimestamp = baseTimestamp;
 
-    logger.info(`Starting sync for project: ${project.name}, runId: ${runId}, triggeredBy: ${triggeredBy}`);
+    logger.info(`${project.name}: Starting sync runId: ${runId}, triggeredBy: ${triggeredBy}`);
     if (lastSyncStatus) logger.info(`Last Sync Status: ${lastSyncStatus}`);
 
     const sinceTimestamp = effectiveTimestamp > 0
@@ -262,7 +262,7 @@ async function syncSingleProject(
 
         // Check cutoff time + stop signal
         const elapsed = Date.now() - startTime;
-        const stopRequested = await shouldStop(project.id);
+        const stopRequested = await shouldStop(project.id, project.name);
         if (elapsed > cutoffMs || stopRequested) {
             isInterrupted = true;
             session.status = 'interrupted';
@@ -270,7 +270,7 @@ async function syncSingleProject(
             session.errorMessage = stopRequested
                 ? `Đã dừng theo yêu cầu người dùng. (Elapsed: ${Math.round(elapsed / 1000)}s)`
                 : `Cutoff timeout: đã vượt quá ${finalCutoffSeconds} giây (Elapsed: ${elapsed}ms > Cutoff: ${cutoffMs}ms). Safe exit.`;
-            if (stopRequested) await clearStop(project.id);
+            if (stopRequested) await clearStop(project.id, project.name);
             logger.warn(session.errorMessage);
             return;
         }
@@ -295,7 +295,7 @@ async function syncSingleProject(
 
             // Check cutoff + stop signal
             const elapsed = Date.now() - startTime;
-            const stopRequested = await shouldStop(project.id);
+            const stopRequested = await shouldStop(project.id, project.name);
             if (elapsed > cutoffMs || stopRequested) {
                 isInterrupted = true;
                 session.status = 'interrupted';
@@ -303,7 +303,7 @@ async function syncSingleProject(
                 session.errorMessage = stopRequested
                     ? `Đã dừng theo yêu cầu người dùng. (Elapsed: ${Math.round(elapsed / 1000)}s)`
                     : `Cutoff timeout: đã vượt quá ${finalCutoffSeconds} giây (Elapsed: ${elapsed}ms > Cutoff: ${cutoffMs}ms). Safe exit.`;
-                if (stopRequested) await clearStop(project.id);
+                if (stopRequested) await clearStop(project.id, project.name);
                 return;
             }
 
