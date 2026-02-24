@@ -11,9 +11,9 @@ export function useProjects() {
         refetchInterval: (query) => {
             const data = query.state.data;
             if (Array.isArray(data) && data.some((p: any) => p.isRunning === true)) {
-                return 5_000;
+                return 5_000; // 5 seconds if any project is running
             }
-            return false;
+            return 30_000; // 30 seconds if no project is running
         },
     });
 }

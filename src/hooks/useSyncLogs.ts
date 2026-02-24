@@ -14,7 +14,7 @@ export function useSyncLogs(filters: SyncLogFilters) {
             if (Array.isArray(data) && data.some((s: any) => s.status === 'running')) {
                 return 15_000;
             }
-            return false;
+            return 30_000; // 30 seconds if no session is running
         },
     });
 }

@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import {
     AreaChart,
     Area,
@@ -22,12 +21,12 @@ import {
     XCircle,
 } from 'lucide-react';
 
-import { gasService } from '@/services/gasService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { DashboardData, SyncSession } from '@/types/types';
+import type { SyncSession } from '@/types/types';
+import { useDashboardData } from '@/hooks/useDashboard';
 import React from 'react';
 
 // --- Type Definitions ---
@@ -177,12 +176,16 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, icon: Icon,
 // --- Main Dashboard Page Component ---
 
 export function DashboardPage() {
-    const { data, isLoading, isError, error } = useQuery<DashboardData, Error>({
-        queryKey: ['dashboardData'],
-        queryFn: gasService.getDashboardData,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        refetchInterval: 1000 * 60 * 5, // 5 minutes
-    });
+
+    // moved to hook useDashboard.ts
+    // const { data, isLoading, isError, error } = useQuery<DashboardData, Error>({
+    //     queryKey: ['dashboardData'],
+    //     queryFn: gasService.getDashboardData,
+    //     staleTime: 1000 * 60 * 5, // 5 minutes
+    //     refetchInterval: 30_000, // 30 seconds
+    // });
+
+    const { data, isLoading, isError, error } = useDashboardData();
 
     if (isLoading) {
         return <DashboardSkeleton />;
