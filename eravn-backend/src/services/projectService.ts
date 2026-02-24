@@ -178,6 +178,7 @@ export async function softReset(): Promise<boolean> {
                 lastSyncStatus: null,
                 updatedAt: now,
                 isDeleted: false,
+                isRunning: false,
             };
 
             // Recalculate nextSyncTimestamp from syncStartDate

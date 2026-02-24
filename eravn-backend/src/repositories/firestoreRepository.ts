@@ -160,12 +160,13 @@ export async function getRecentSyncSessions(limit = 20): Promise<SyncSession[]> 
 // File Logs - Batch Write
 // ==========================================
 
-export async function batchSaveFileLogs(sessionId: string, fileLogs: Partial<FileLog>[]): Promise<void> {
+export async function batchSaveFileLogs(sessionId: string, fileLogs: Partial<FileLog>[], projectInfo?: { name: string }): Promise<void> {
     // Firestore batch write - max 500 per batch
     for (let i = 0; i < fileLogs.length; i += CONFIG.BATCH_SIZE) {
         const chunk = fileLogs.slice(i, i + CONFIG.BATCH_SIZE);
         const batch = db.batch();
 
+        let chunkSizeBytes = 0;
         for (const log of chunk) {
             const logId = log.id || uuidv4();
             const docRef = db.collection('fileLogs').doc(logId);
@@ -174,10 +175,12 @@ export async function batchSaveFileLogs(sessionId: string, fileLogs: Partial<Fil
                 id: logId,
                 sessionId,
             });
+            chunkSizeBytes += (log.fileSize || 0);
         }
 
         await batch.commit();
-        logger.info(`Batch saved ${chunk.length} file logs for session ${sessionId}`);
+        const projectSegment = projectInfo ? ` for project ${projectInfo.name}` : '';
+        logger.info(`Batch saved ${chunk.length} file logs${projectSegment} (session: ${sessionId}, size: ${chunkSizeBytes} bytes)`);
     }
 }
 
