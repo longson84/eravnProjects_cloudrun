@@ -47,7 +47,6 @@ vi.mock('../../services/webhookService.js', () => ({
 vi.mock('../../repositories/firestoreRepository.js', () => ({
     checkFirestoreConnectivity: vi.fn(),
     resetDatabase: vi.fn(),
-    getAllProjectHeartbeats: vi.fn(),
     getSettingsFromDb: vi.fn().mockResolvedValue({
         syncCutoffSeconds: 300,
         defaultScheduleCron: '',

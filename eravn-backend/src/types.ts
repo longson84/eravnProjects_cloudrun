@@ -97,12 +97,6 @@ export interface AppSettings {
     timezone: string; // IANA timezone, e.g. 'Asia/Ho_Chi_Minh'
 }
 
-/** Heartbeat status */
-export interface ProjectHeartbeat {
-    projectId: string;
-    lastCheckTimestamp: string;
-    lastStatus: string;
-}
 
 /** Statistics for a specific period */
 export interface SyncProgressStats {

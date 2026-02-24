@@ -5,7 +5,7 @@
 // Falls back to mock data when VITE_API_URL is not set.
 
 import axios from 'axios';
-import type { Project, FileLog, AppSettings, ProjectHeartbeat, DashboardData, SyncLogEntry } from '@/types/types';
+import type { Project, FileLog, AppSettings, DashboardData, SyncLogEntry } from '@/types/types';
 import {
     mockProjects,
     mockSyncSessions,

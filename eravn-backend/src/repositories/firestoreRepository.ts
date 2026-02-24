@@ -3,7 +3,7 @@
 // ==========================================
 // Uses @google-cloud/firestore SDK (replaces REST API from GAS)
 
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { Firestore } from '@google-cloud/firestore';
 import { CONFIG } from '../config.js';
 import logger from '../logger.js';
 import type {
