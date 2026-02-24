@@ -160,30 +160,12 @@ export function SettingsPage() {
                             <p className="text-xs text-muted-foreground">Thời gian tối đa cho mỗi phiên sync. Sau thời gian này, hệ thống sẽ thực hiện Safe Exit.</p>
                         </div>
                         <Separator />
-                        <div className="grid gap-2">
-                            <Label htmlFor="schedule">Lịch chạy mặc định (Phút)</Label>
-                            <Input
-                                id="schedule"
-                                type="number"
-                                min="5"
-                                value={scheduleMinutes}
-                                onChange={e => {
-                                    const val = Number(e.target.value);
-                                    setScheduleMinutes(val);
-                                    update('defaultScheduleCron', minutesToCron(val));
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Chu kỳ chạy đồng bộ (tính bằng phút, tối thiểu 5 phút).
-                                {scheduleMinutes >= 60 && ` (~${(scheduleMinutes / 60).toFixed(1)} giờ)`}
-                            </p>
-                        </div>
-                        <Separator />
+
                         <div className="flex items-center justify-between">
                             <div>
-                                <Label>Tự động chạy theo lịch</Label>
+                                <Label>Tự động</Label>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                    Khi bật, trigger thời gian sẽ tự động chạy Sync All theo chu kỳ trên.
+                                    Khi bật, hệ thống mới có thể tự chạy Sync tất cả dự án theo định kỳ
                                 </p>
                             </div>
                             <Switch
