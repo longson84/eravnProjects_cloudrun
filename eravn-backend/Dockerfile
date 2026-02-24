@@ -1,5 +1,8 @@
 # ==========================================
-# eravnProjects Backend - Cloud Run Dockerfile
+# eravnProjects Backend - Unified Dockerfile
+# ==========================================
+# Dùng cho CẢ Cloud Run Service LẪN Job.
+# Chế độ hoạt động điều khiển bởi RUN_MODE env var.
 # ==========================================
 
 # Stage 1: Build
@@ -21,11 +24,13 @@ WORKDIR /app
 COPY --from=builder /prod_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
-# Cloud Run uses port 8080 by default
+# Mặc định cho Service mode
 ENV PORT=8080
 ENV NODE_ENV=production
 
 EXPOSE 8080
 
-CMD ["node", "dist/app.js"]
+CMD ["./entrypoint.sh"]
