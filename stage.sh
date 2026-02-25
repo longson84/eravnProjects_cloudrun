@@ -40,16 +40,17 @@ echo ""
 echo "🔹 Backend (Staging): https://eravn-backend-staging-166671254430.asia-southeast1.run.app"
 
 # Tự động lấy URL từ Firebase Hosting
-echo "🔍 Đang lấy link Frontend Staging mới nhất..."
-# Chú ý: Cần có firebase-tools và đã login
-# Lấy URL của channel 'staging', parse lấy cột URL và lọc dòng chứa .web.app
-PREVIEW_URL=$(npx firebase hosting:channel:list --project eravn-projects-cloud-run --json | grep -o '"url": "[^"]*"' | head -n 1 | cut -d'"' -f4)
+echo "🔍 Đang lấy link Frontend Staging..."
+
+# Thử lấy link (bỏ --project để dùng mặc định từ .firebaserc, bỏ npx nếu chậm)
+# Tìm channel có name là 'staging' trong JSON output
+PREVIEW_URL=$(npx firebase hosting:channel:list --json 2>/dev/null | grep -A 5 '"staging"' | grep '"url":' | cut -d'"' -f4 | head -n 1)
 
 if [ -z "$PREVIEW_URL" ]; then
-    echo "🔹 Frontend (Staging): Đang deploy hoặc không tìm thấy channel... Kiểm tra tại đây 👇"
-    echo "👉 https://github.com/$(git remote get-url origin | sed 's/.*github.com[\/:]//;s/\.git//')/actions"
+    echo "🔹 Frontend (Staging): Không tự động lấy được link."
+    echo "👉 Bạn có thể chạy lệnh này để xem link: npx firebase hosting:channel:list"
 else
     echo "🔹 Frontend (Staging): $PREVIEW_URL"
 fi
 echo "--------------------------------------------------"
-echo "Lưu ý: Sau khi push, bộ CI/CD sẽ mất khoảng 1-2 phút để cập nhật code mới vào các link trên."
+echo "Lưu ý: Sau khi push, bộ CI/CD sẽ mất khoảng 1-2 phút để cập nhật code mới."
