@@ -8,13 +8,13 @@ on:
     branches:
       - build
       - master
-    paths:
-      - 'eravn-backend/**'
-      - 'src/**'
-      - 'index.html'
-      - 'package.json'
-      - 'vite.config.ts'
-      - '.github/workflows/deploy.yml'
+    paths-ignore:
+      - '**.md'
+      - '**.sh'
+      - '.gitignore'
+      - '.firebaserc'
+      - 'firebase.json'
+      - 'eravn-backend/src/__tests__/**'
 
 # ─── BIẾN DÙNG CHUNG ───
 env:
