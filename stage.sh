@@ -32,4 +32,13 @@ fi
 echo "📤 Đang push lên nhánh build..."
 git push origin build
 
-echo "✅ Đã xong! Code đã được đẩy lên nhánh build. Bộ CI/CD sẽ tự động deploy lên Staging."
+echo "✅ Đã xong! Code đã được đẩy lên nhánh build."
+echo ""
+echo "--------------------------------------------------"
+echo "🚀 staging frontend + backend link"
+echo ""
+echo "🔹 Backend (Staging): https://eravn-backend-staging-166671254430.asia-southeast1.run.app"
+echo "🔹 Frontend (Staging): Đang deploy... Kiểm tra tại đây 👇"
+echo "👉 https://github.com/$(git remote get-url origin | sed 's/.*github.com[\/:]//;s/\.git//')/actions"
+echo "--------------------------------------------------"
+echo "Lưu ý: Link Frontend (Staging) sẽ xuất hiện trong tab Actions sau vài phút."
