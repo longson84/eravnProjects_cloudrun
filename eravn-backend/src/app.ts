@@ -22,9 +22,23 @@ const app = express();
 // Middleware
 // ==========================================
 
-// CORS
+// CORS — hỗ trợ wildcard pattern (ví dụ: https://*.web.app)
 app.use(cors({
-    origin: CONFIG.CORS_ORIGINS,
+    origin: (origin, callback) => {
+        // Cho phép request không có origin (server-to-server, curl, etc.)
+        if (!origin) return callback(null, true);
+
+        const allowed = CONFIG.CORS_ORIGINS.some(pattern => {
+            if (pattern.includes('*')) {
+                // Chuyển wildcard thành regex: https://*.web.app → /^https:\/\/.*\.web\.app$/
+                const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+                return regex.test(origin);
+            }
+            return pattern === origin;
+        });
+
+        callback(null, allowed);
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
