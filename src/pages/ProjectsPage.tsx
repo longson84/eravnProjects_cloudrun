@@ -150,13 +150,38 @@ export function ProjectsPage() {
                 p.description.toLowerCase().includes(search.toLowerCase()))
     );
 
+    const extractGoogleDriveId = (input: string): string | null => {
+        const trimmed = input.trim();
+        if (!trimmed) return null;
+
+        // Nếu user nhập trực tiếp ID (không chứa dấu / hay khoảng trắng)
+        if (/^[a-zA-Z0-9_-]{10,}$/.test(trimmed)) {
+            return trimmed;
+        }
+
+        const patterns = [
+            /folders\/([a-zA-Z0-9_-]{10,})/,           // folder
+            /file\/d\/([a-zA-Z0-9_-]{10,})/,           // file
+            /document\/d\/([a-zA-Z0-9_-]{10,})/,       // google doc
+            /spreadsheets\/d\/([a-zA-Z0-9_-]{10,})/,   // sheet
+            /presentation\/d\/([a-zA-Z0-9_-]{10,})/,   // slide
+            /open\?id=([a-zA-Z0-9_-]{10,})/,           // open?id=
+        ];
+
+        for (const pattern of patterns) {
+            const match = trimmed.match(pattern);
+            if (match) return match[1];
+        }
+
+        return null;
+    };
+
     const extractFolderId = (link: string): string => {
-        const match = link.match(/folders\/([a-zA-Z0-9_-]+)/);
-        return match ? match[1] : link;
+        return extractGoogleDriveId(link) ?? link;
     };
 
     const validateFolderLink = (link: string): boolean => {
-        return /^https:\/\/drive\.google\.com\/drive\/folders\/[a-zA-Z0-9_-]+/.test(link) || /^[a-zA-Z0-9_-]{10,}$/.test(link);
+        return extractGoogleDriveId(link) !== null;
     };
 
     const resetForm = () => {
