@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ScrollText, Search, Filter, ChevronDown, ChevronRight, FileText, CheckCircle2, XCircle, Timer, Clock, Loader2, RefreshCw, Square } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,7 @@ export function SyncLogsPage() {
     const [daysFilter, setDaysFilter] = useState('1');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
+    const [syncedOnly, setSyncedOnly] = useState(false);
     const [expandedSession, setExpandedSession] = useState<{ sessionId: string, projectId: string } | null>(null);
     const [continuedSessions, setContinuedSessions] = useState<Set<string>>(new Set());
     const [stopModal, setStopModal] = useState<{ isOpen: boolean; projectId: string; projectName: string }>({
@@ -81,9 +83,9 @@ export function SyncLogsPage() {
     const fmt = (d: string) => new Date(d).toLocaleString('vi-VN', { timeZone: timezone, hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric', year: '2-digit' });
     const fmtSize = (b?: number) => { if (!b) return '—'; if (b < 1024) return `${b} B`; if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`; return `${(b / 1048576).toFixed(0)} MB`; };
 
-    const sortedSessions = [...sessions].sort((a, b) => {
-        return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
-    });
+    const sortedSessions = [...sessions]
+        .filter(s => !syncedOnly || s.filesCount > 0)
+        .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
     // Live duration timer for running sessions
     const [now, setNow] = useState(Date.now());
@@ -171,6 +173,10 @@ export function SyncLogsPage() {
                                 <SelectItem value="running">Đang Sync</SelectItem>
                             </SelectContent>
                         </Select>
+                        <div className="flex items-center gap-2">
+                            <Switch id="synced-filter" checked={syncedOnly} onCheckedChange={setSyncedOnly} />
+                            <Label htmlFor="synced-filter" className="text-sm cursor-pointer select-none">Synced</Label>
+                        </div>
                     </div>
                 </div>
             </Card>
