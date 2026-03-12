@@ -11,8 +11,10 @@ import { useAppContext } from '@/context/AppContext';
 import { gasService } from '@/services/gasService';
 import type { AppSettings } from '@/types/types';
 import { useSettings, useUpdateSettings, useResetDatabase, useSoftReset } from '@/hooks/useSettings';
+import { useAuth } from '@/context/AuthContext';
 
 export function SettingsPage() {
+    const { isAdmin } = useAuth();
     const { state, setTheme } = useAppContext();
     const { data: settings, isLoading } = useSettings();
     const updateSettingsMutation = useUpdateSettings();
@@ -101,15 +103,18 @@ export function SettingsPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Cài đặt</h1>
                     <p className="text-muted-foreground mt-1">Cấu hình hệ thống đồng bộ</p>
                 </div>
+                {isAdmin && (
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={handleReset} className="gap-2"><RotateCcw className="w-4 h-4" />Reset</Button>
                     <Button onClick={handleSave} disabled={updateSettingsMutation.isPending} className="gap-2">
                         {saved ? <><CheckCircle2 className="w-4 h-4" />Đã lưu</> : updateSettingsMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Đang lưu...</> : <><Save className="w-4 h-4" />Lưu cài đặt</>}
                     </Button>
                 </div>
+                )}
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
+                {isAdmin && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-primary" />Cấu hình Sync</CardTitle>
@@ -149,8 +154,10 @@ export function SettingsPage() {
                         </div>
                     </CardContent>
                 </Card>
+                )}
 
                 <div className="space-y-6">
+                    {isAdmin && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5 text-amber-500" />Test Zone</CardTitle>
@@ -173,6 +180,9 @@ export function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
+
+                    {isAdmin && (
 
                     <Card>
                         <CardHeader>
@@ -219,6 +229,7 @@ export function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
 
                     {/* <Card>
                         <CardHeader>
@@ -274,6 +285,7 @@ export function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {isAdmin && (
                     <Card className="border-destructive/50">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-destructive"><AlertTriangle className="w-5 h-5" />Danger Zone</CardTitle>
@@ -292,6 +304,7 @@ export function SettingsPage() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
                 </div>
             </div>
 

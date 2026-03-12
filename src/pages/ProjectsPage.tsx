@@ -23,7 +23,10 @@ import {
     List,
     Calendar,
     CalendarDays,
-    Square
+    Square,
+    Lock,
+    LockOpen,
+    ShieldCheck,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,8 +71,14 @@ import {
     useStopSync
 } from '@/hooks/useProjects';
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings';
+import { useAuth } from '@/context/AuthContext';
 
 export function ProjectsPage() {
+    const { isAdmin, unlockAdmin, lockAdmin } = useAuth();
+    const [isPassphraseOpen, setIsPassphraseOpen] = useState(false);
+    const [passphrase, setPassphrase] = useState('');
+    const [passphraseError, setPassphraseError] = useState(false);
+
     const [stopModal, setStopModal] = useState<{ isOpen: boolean; projectId: string; projectName: string }>({
         isOpen: false,
         projectId: '',
@@ -96,6 +105,26 @@ export function ProjectsPage() {
     // View mode state
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const navigate = useNavigate();
+
+    const handleUnlock = () => {
+        if (unlockAdmin(passphrase)) {
+            setIsPassphraseOpen(false);
+            setPassphrase('');
+            setPassphraseError(false);
+        } else {
+            setPassphraseError(true);
+        }
+    };
+
+    const handleLockToggle = () => {
+        if (isAdmin) {
+            lockAdmin();
+        } else {
+            setPassphrase('');
+            setPassphraseError(false);
+            setIsPassphraseOpen(true);
+        }
+    };
     const [syncResult, setSyncResult] = useState<{
         open: boolean;
         success: boolean;
@@ -358,11 +387,41 @@ export function ProjectsPage() {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Dự án</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Quản lý các cặp thư mục đồng bộ Source → Destination
-                    </p>
+                <div className="flex items-center gap-3">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Dự án</h1>
+                        <p className="text-muted-foreground mt-1">
+                            Quản lý các cặp thư mục đồng bộ Source → Destination
+                        </p>
+                    </div>
+                    {/* Admin Lock/Unlock Toggle */}
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant={isAdmin ? 'default' : 'ghost'}
+                                    size="icon"
+                                    className={`h-9 w-9 shrink-0 transition-all duration-200 ${
+                                        isAdmin
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                    onClick={handleLockToggle}
+                                >
+                                    {isAdmin ? <LockOpen className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                {isAdmin ? 'Đang ở chế độ Quản trị — Click để khóa' : 'Mở khóa Quản trị'}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                    {isAdmin && (
+                        <Badge variant="success" className="gap-1 text-xs animate-in fade-in slide-in-from-left-2 duration-200">
+                            <ShieldCheck className="w-3 h-3" />
+                            Admin
+                        </Badge>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -388,6 +447,7 @@ export function ProjectsPage() {
                         </Button>
                     </div>
 
+                    {isAdmin && (
                     <Button
                         variant="outline"
                         className="gap-2"
@@ -402,7 +462,9 @@ export function ProjectsPage() {
                         )}
                         Sync All
                     </Button>
+                    )}
 
+                    {isAdmin && (
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                         <DialogTrigger asChild>
                             <Button onClick={handleOpenCreate} className="gap-2">
@@ -523,6 +585,7 @@ export function ProjectsPage() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+                    )}
                 </div>
             </div>
 
@@ -653,6 +716,7 @@ export function ProjectsPage() {
                                 </div>
 
                                 {/* Actions */}
+                                {isAdmin && (
                                 <div className="flex gap-2 pt-1">
                                     <Button
                                         variant="outline"
@@ -727,6 +791,7 @@ export function ProjectsPage() {
                                         <Trash2 className="w-3.5 h-3.5" />
                                     </Button>
                                 </div>
+                                )}
                             </CardContent>
                         </Card>
                     ))}
@@ -746,7 +811,7 @@ export function ProjectsPage() {
                                 <TableHead className="w-[120px]">Kết quả</TableHead>
                                 <TableHead className="w-[200px]">Thành công gần nhất</TableHead>
                                 <TableHead className="w-[150px]">Sync tiếp theo</TableHead>
-                                <TableHead className="w-[100px] text-right">Thao tác</TableHead>
+                                {isAdmin && <TableHead className="w-[100px] text-right">Thao tác</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -807,6 +872,7 @@ export function ProjectsPage() {
                                     <TableCell className="text-xs whitespace-nowrap">
                                         {formatDate(project.nextSyncTimestamp || null)}
                                     </TableCell>
+                                    {isAdmin && (
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-1">
                                             <Button
@@ -871,6 +937,7 @@ export function ProjectsPage() {
                                             </Button>
                                         </div>
                                     </TableCell>
+                                    )}
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -941,6 +1008,49 @@ export function ProjectsPage() {
                             navigate('/logs');
                         }}>
                             Xem chi tiết
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Admin Passphrase Dialog */}
+            <Dialog open={isPassphraseOpen} onOpenChange={setIsPassphraseOpen}>
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Lock className="w-5 h-5 text-primary" />
+                            Mở khóa Quản trị
+                        </DialogTitle>
+                        <DialogDescription>
+                            Nhập mã quản trị để có thể tạo, sửa, xóa dự án.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="passphrase">Mã quản trị</Label>
+                            <Input
+                                id="passphrase"
+                                type="password"
+                                placeholder="Nhập mã..."
+                                value={passphrase}
+                                onChange={(e) => { setPassphrase(e.target.value); setPassphraseError(false); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
+                                className={passphraseError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                                autoFocus
+                            />
+                            {passphraseError && (
+                                <p className="text-xs text-red-500 flex items-center gap-1">
+                                    <XCircle className="w-3 h-3" />
+                                    Mã không đúng
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsPassphraseOpen(false)}>Hủy</Button>
+                        <Button onClick={handleUnlock} disabled={!passphrase}>
+                            <LockOpen className="w-4 h-4 mr-2" />
+                            Mở khóa
                         </Button>
                     </DialogFooter>
                 </DialogContent>
