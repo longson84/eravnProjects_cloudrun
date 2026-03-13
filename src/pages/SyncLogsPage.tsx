@@ -11,6 +11,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useSyncLogs, useSyncLogDetails, useContinueSync } from '@/hooks/useSyncLogs';
 import { useSettings } from '@/hooks/useSettings';
+import { useProjects } from '@/hooks/useProjects';
+import { useAuth } from '@/context/AuthContext';
 import { StopSyncModal } from '@/components/StopSyncModal';
 import type { SyncLogEntry } from '@/types/types';
 
@@ -55,6 +57,8 @@ export function SyncLogsPage() {
 
     const continueMutation = useContinueSync();
     const { data: settings } = useSettings();
+    const { data: projects = [] } = useProjects();
+    const { isAdmin } = useAuth();
 
     const handleExpand = (sessionId: string, projectId: string) => {
         if (expandedSession?.sessionId === sessionId && expandedSession?.projectId === projectId) {
@@ -110,9 +114,13 @@ export function SyncLogsPage() {
     };
 
     const canContinue = (session: SyncLogEntry) => {
+        if (!isAdmin) return false;
         if (session.status !== 'error' && session.status !== 'interrupted') return false;
         if (session.continueId) return false;
         if (continuedSessions.has(session.sessionId)) return false;
+        // Hide Continue for deleted projects
+        const project = projects.find(p => p.id === session.projectId);
+        if (project?.isDeleted) return false;
         return true;
     };
 
@@ -240,7 +248,7 @@ export function SyncLogsPage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1">
-                                                {session.status === 'running' && (
+                                                {isAdmin && session.status === 'running' && (
                                                     <Button
                                                         size="sm"
                                                         variant="destructive"
