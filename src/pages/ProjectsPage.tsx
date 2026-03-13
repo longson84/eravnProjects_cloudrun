@@ -2,7 +2,7 @@
 // Projects Page - Project Management
 // ==========================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Plus,
@@ -27,6 +27,10 @@ import {
     Lock,
     LockOpen,
     ShieldCheck,
+    Upload,
+    FileSpreadsheet,
+    CheckCircle,
+    XOctagon,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,6 +77,67 @@ import {
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings';
 import { useAuth } from '@/context/AuthContext';
 
+// ==========================================
+// CSV Parsing Utility
+// ==========================================
+interface ImportRow {
+    name: string;
+    sourceFolderLink: string;
+    destFolderLink: string;
+}
+
+function parseCSV(text: string): ImportRow[] {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return []; // header + at least 1 data row
+
+    const rows: ImportRow[] = [];
+    for (let i = 1; i < lines.length; i++) {
+        const fields = parseCSVLine(lines[i]);
+        if (fields.length >= 3 && fields[0].trim()) {
+            rows.push({
+                name: fields[0].trim(),
+                sourceFolderLink: fields[1].trim(),
+                destFolderLink: fields[2].trim(),
+            });
+        }
+    }
+    return rows;
+}
+
+/** Parse a single CSV line, handling quoted fields */
+function parseCSVLine(line: string): string[] {
+    const fields: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                if (i + 1 < line.length && line[i + 1] === '"') {
+                    current += '"';
+                    i++; // skip escaped quote
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                current += ch;
+            }
+        } else {
+            if (ch === '"') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                fields.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+    }
+    fields.push(current);
+    return fields;
+}
+
 export function ProjectsPage() {
     const { isAdmin, unlockAdmin, lockAdmin } = useAuth();
     const [isPassphraseOpen, setIsPassphraseOpen] = useState(false);
@@ -101,6 +166,15 @@ export function ProjectsPage() {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [syncingId, setSyncingId] = useState<string | null>(null);
+
+    // Import CSV state
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importRows, setImportRows] = useState<ImportRow[]>([]);
+    const [importSyncDate, setImportSyncDate] = useState(new Date().toISOString().split('T')[0]);
+    const [importProgress, setImportProgress] = useState<{ current: number; total: number; status: 'idle' | 'importing' | 'done' | 'error'; errors: string[] }>({
+        current: 0, total: 0, status: 'idle', errors: []
+    });
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // View mode state
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -227,6 +301,68 @@ export function ProjectsPage() {
     const handleOpenCreate = () => {
         resetForm();
         setIsCreateOpen(true);
+    };
+
+    // ==========================================
+    // Import CSV Handlers
+    // ==========================================
+    const handleImportFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target?.result as string;
+            const rows = parseCSV(text);
+            setImportRows(rows);
+            setImportProgress({ current: 0, total: rows.length, status: 'idle', errors: [] });
+        };
+        reader.readAsText(file);
+        // Reset file input so re-selecting the same file triggers onChange
+        e.target.value = '';
+    }, []);
+
+    const handleImportOpen = () => {
+        setImportRows([]);
+        setImportSyncDate(new Date().toISOString().split('T')[0]);
+        setImportProgress({ current: 0, total: 0, status: 'idle', errors: [] });
+        setIsImportOpen(true);
+    };
+
+    const handleImportConfirm = async () => {
+        if (importRows.length === 0) return;
+
+        setImportProgress({ current: 0, total: importRows.length, status: 'importing', errors: [] });
+        const errors: string[] = [];
+
+        for (let i = 0; i < importRows.length; i++) {
+            const row = importRows[i];
+            try {
+                const projectData: Partial<Project> = {
+                    name: row.name,
+                    description: '',
+                    sourceFolderLink: row.sourceFolderLink,
+                    sourceFolderId: extractFolderId(row.sourceFolderLink),
+                    destFolderLink: row.destFolderLink,
+                    destFolderId: extractFolderId(row.destFolderLink),
+                    syncStartDate: importSyncDate || undefined,
+                    status: 'active',
+                };
+                await createProjectMutation.mutateAsync(projectData);
+            } catch (err) {
+                errors.push(`#${i + 1} "${row.name}": ${(err as Error).message}`);
+            }
+            setImportProgress(prev => ({ ...prev, current: i + 1, errors: [...errors] }));
+        }
+
+        setImportProgress(prev => ({
+            ...prev,
+            status: errors.length > 0 ? 'error' : 'done',
+        }));
+    };
+
+    const handleRemoveImportRow = (index: number) => {
+        setImportRows(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleOpenEdit = (project: Project) => {
@@ -461,6 +597,17 @@ export function ProjectsPage() {
                             <RefreshCw className="w-4 h-4" />
                         )}
                         Sync All
+                    </Button>
+                    )}
+
+                    {isAdmin && (
+                    <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={handleImportOpen}
+                    >
+                        <Upload className="w-4 h-4" />
+                        Import CSV
                     </Button>
                     )}
 
@@ -1052,6 +1199,233 @@ export function ProjectsPage() {
                             <LockOpen className="w-4 h-4 mr-2" />
                             Mở khóa
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Import CSV Dialog */}
+            <Dialog open={isImportOpen} onOpenChange={(open) => {
+                if (!open && importProgress.status === 'importing') return; // prevent closing during import
+                setIsImportOpen(open);
+            }}>
+                <DialogContent className="sm:max-w-[750px] max-h-[85vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileSpreadsheet className="w-5 h-5 text-primary" />
+                            Import dự án từ CSV
+                        </DialogTitle>
+                        <DialogDescription>
+                            Tải lên file CSV gồm 3 cột: <strong>Tên Dự án</strong>, <strong>Folder From</strong>, <strong>Folder To</strong>.
+                            Chọn ngày bắt đầu sync và xác nhận tạo.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto space-y-4 py-4">
+                        {/* Step 1: File Upload */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">1. Chọn file CSV</Label>
+                            <div
+                                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all duration-200"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".csv"
+                                    className="hidden"
+                                    onChange={handleImportFileSelect}
+                                />
+                                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                                <p className="text-sm text-muted-foreground">Click để chọn file CSV</p>
+                                <p className="text-xs text-muted-foreground/60 mt-1">Hỗ trợ file .csv</p>
+                            </div>
+                        </div>
+
+                        {/* Preview Table */}
+                        {importRows.length > 0 && (
+                            <>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-sm font-medium">2. Xem trước ({importRows.length} dự án)</Label>
+                                        <Badge variant="secondary" className="text-xs">
+                                            {importRows.length} dự án sẽ được tạo
+                                        </Badge>
+                                    </div>
+                                    <div className="rounded-md border max-h-[280px] overflow-y-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-[40px] text-center">#</TableHead>
+                                                    <TableHead>Tên dự án</TableHead>
+                                                    <TableHead className="w-[100px]">Source</TableHead>
+                                                    <TableHead className="w-[100px]">Dest</TableHead>
+                                                    <TableHead className="w-[50px]"></TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {importRows.map((row, idx) => (
+                                                    <TableRow key={idx}>
+                                                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                                                        <TableCell className="text-sm font-medium max-w-[250px] truncate">{row.name}</TableCell>
+                                                        <TableCell>
+                                                            {row.sourceFolderLink ? (
+                                                                <a href={row.sourceFolderLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                                                                    Link <ExternalLink className="w-3 h-3" />
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground">—</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {row.destFolderLink ? (
+                                                                <a href={row.destFolderLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                                                                    Link <ExternalLink className="w-3 h-3" />
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground">—</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {importProgress.status === 'idle' && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                                                    onClick={() => handleRemoveImportRow(idx)}
+                                                                >
+                                                                    <XCircle className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            )}
+                                                            {importProgress.status !== 'idle' && idx < importProgress.current && (
+                                                                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                                            )}
+                                                            {importProgress.status === 'importing' && idx === importProgress.current && (
+                                                                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+
+                                {/* Step 2: Sync Start Date */}
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium flex items-center gap-2">
+                                        3. Ngày bắt đầu sync
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger>
+                                                    <AlertCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p className="max-w-xs">Tất cả dự án import sẽ dùng chung ngày bắt đầu sync này.</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </Label>
+                                    <div className="relative max-w-[220px]">
+                                        <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                        <Input
+                                            type="date"
+                                            className="pl-9"
+                                            value={importSyncDate}
+                                            onChange={(e) => setImportSyncDate(e.target.value)}
+                                            disabled={importProgress.status !== 'idle'}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Progress & Results */}
+                        {importProgress.status === 'importing' && (
+                            <div className="space-y-2 p-4 rounded-lg bg-muted/30 border">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="font-medium flex items-center gap-2">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Đang import...
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        {importProgress.current} / {importProgress.total}
+                                    </span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className="bg-primary h-full rounded-full transition-all duration-300"
+                                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {importProgress.status === 'done' && (
+                            <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+                                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                                        Import thành công {importProgress.total} dự án!
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {importProgress.status === 'error' && (
+                            <div className="space-y-2">
+                                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
+                                    <XOctagon className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                                            Import hoàn tất với {importProgress.errors.length} lỗi
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Đã tạo thành công {importProgress.total - importProgress.errors.length} / {importProgress.total} dự án.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="max-h-[100px] overflow-y-auto text-xs space-y-1 pl-2">
+                                    {importProgress.errors.map((err, i) => (
+                                        <p key={i} className="text-destructive">• {err}</p>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        {importProgress.status === 'done' || importProgress.status === 'error' ? (
+                            <Button onClick={() => setIsImportOpen(false)}>
+                                Đóng
+                            </Button>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsImportOpen(false)}
+                                    disabled={importProgress.status === 'importing'}
+                                >
+                                    Hủy
+                                </Button>
+                                <Button
+                                    onClick={handleImportConfirm}
+                                    disabled={importRows.length === 0 || importProgress.status === 'importing'}
+                                    className="gap-2"
+                                >
+                                    {importProgress.status === 'importing' ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Đang import...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload className="w-4 h-4" />
+                                            Bắt đầu Import ({importRows.length})
+                                        </>
+                                    )}
+                                </Button>
+                            </>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
