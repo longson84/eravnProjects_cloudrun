@@ -16,7 +16,7 @@ vi.mock('../../services/settingsService.js', () => ({
     getSettings: vi.fn(),
 }));
 
-import { sendSyncSummary, sendWebhookNotification, testWebhook } from '../../services/webhookService.js';
+import { sendSyncSummary, sendWebhookNotification, testWebhook, formatBytes } from '../../services/webhookService.js';
 import { getSettings } from '../../services/settingsService.js';
 import axios from 'axios';
 import type { SyncSession } from '../../types.js';
@@ -48,9 +48,36 @@ describe('WebhookService', () => {
         vi.mocked(axios.post).mockResolvedValue({ status: 200 });
     });
 
+    describe('formatBytes', () => {
+        it('should format 0 bytes', () => {
+            expect(formatBytes(0)).toBe('0 B');
+        });
+
+        it('should format bytes < 1KB', () => {
+            expect(formatBytes(512)).toBe('512 B');
+        });
+
+        it('should format KB', () => {
+            expect(formatBytes(1024)).toBe('1 KB');
+            expect(formatBytes(1536)).toBe('1.5 KB');
+        });
+
+        it('should format MB', () => {
+            expect(formatBytes(1048576)).toBe('1 MB');
+            expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.5 MB');
+        });
+
+        it('should format GB', () => {
+            expect(formatBytes(1073741824)).toBe('1 GB');
+        });
+    });
+
     describe('sendSyncSummary', () => {
-        it('should send card notification with session stats', async () => {
-            const sessions = [mockSession(), mockSession({ id: 'sess-2', status: 'error', errorMessage: 'Test error' })];
+        it('should send card notification with per-project summary', async () => {
+            const sessions = [
+                mockSession(),
+                mockSession({ id: 'sess-2', projectName: 'Project B', status: 'error', errorMessage: 'Test error', filesCount: 0, totalSizeSynced: 0 }),
+            ];
 
             await sendSyncSummary(sessions, 'run-1');
 
@@ -58,6 +85,20 @@ describe('WebhookService', () => {
             const payload = vi.mocked(axios.post).mock.calls[0][1] as any;
             expect(payload.cards).toBeDefined();
             expect(payload.cards[0].header.title).toContain('🔴'); // Has errors
+            expect(payload.cards[0].header.title).toContain('Cloud Run Job');
+
+            // Verify summary section
+            const summaryWidgets = payload.cards[0].sections[0].widgets;
+            expect(summaryWidgets).toHaveLength(4); // projects, files, size, duration
+
+            // Verify per-project detail section
+            const detailSection = payload.cards[0].sections[1];
+            expect(detailSection.header).toContain('Chi tiết');
+            const detailText = detailSection.widgets[0].textParagraph.text;
+            expect(detailText).toContain('Test Project');
+            expect(detailText).toContain('Project B');
+            expect(detailText).toContain('Chi tiết lỗi');
+            expect(detailText).toContain('Test error');
         });
 
         it('should show green emoji when all success', async () => {
@@ -72,6 +113,16 @@ describe('WebhookService', () => {
 
             const payload = vi.mocked(axios.post).mock.calls[0][1] as any;
             expect(payload.cards[0].header.title).toContain('🟡');
+        });
+
+        it('should include formatted size and duration in per-project details', async () => {
+            const session = mockSession({ totalSizeSynced: 2 * 1024 * 1024, executionDurationSeconds: 95 });
+            await sendSyncSummary([session], 'run-1');
+
+            const payload = vi.mocked(axios.post).mock.calls[0][1] as any;
+            const detailText = payload.cards[0].sections[1].widgets[0].textParagraph.text;
+            expect(detailText).toContain('2 MB');
+            expect(detailText).toContain('1m 35s');
         });
 
         it('should skip when no webhook URL', async () => {

@@ -80,8 +80,8 @@ export async function syncAllProjects(options?: { triggeredBy?: 'manual' | 'sche
         .filter((r): r is PromiseFulfilledResult<SyncSession> => r.status === 'fulfilled')
         .map(r => r.value);
 
-    // Send summary notification
-    if (settings.enableNotifications && settings.webhookUrl) {
+    // Send summary notification — only for Cloud Run Job (scheduled)
+    if (triggeredBy === 'scheduled' && settings.enableNotifications && settings.webhookUrl) {
         await webhookService.sendSyncSummary(sessions, runId);
     }
 
@@ -122,7 +122,8 @@ export async function syncProjectById(
         });
     }
 
-    if (settings.enableNotifications && settings.webhookUrl) {
+    const triggeredBy = options?.triggeredBy || 'manual';
+    if (triggeredBy === 'scheduled' && settings.enableNotifications && settings.webhookUrl) {
         await webhookService.sendSyncSummary([result], runId);
     }
 

@@ -150,20 +150,29 @@ describe('SyncService', () => {
             expect(driveService.listModifiedFiles).toHaveBeenCalledTimes(1);
         });
 
-        it('should send webhook notification when enabled', async () => {
+        it('should send webhook notification when enabled and triggeredBy is scheduled (Cloud Run Job)', async () => {
             vi.mocked(getSettings).mockResolvedValue({ ...defaultSettings, enableNotifications: true });
             vi.mocked(projectService.getAllProjects).mockResolvedValue([makeProject()]);
 
-            await syncAllProjects();
+            await syncAllProjects({ triggeredBy: 'scheduled' });
 
             expect(webhookService.sendSyncSummary).toHaveBeenCalledOnce();
         });
 
-        it('should not send webhook when disabled', async () => {
+        it('should NOT send webhook when triggeredBy is manual even if notifications enabled', async () => {
+            vi.mocked(getSettings).mockResolvedValue({ ...defaultSettings, enableNotifications: true });
+            vi.mocked(projectService.getAllProjects).mockResolvedValue([makeProject()]);
+
+            await syncAllProjects({ triggeredBy: 'manual' });
+
+            expect(webhookService.sendSyncSummary).not.toHaveBeenCalled();
+        });
+
+        it('should not send webhook when notifications disabled', async () => {
             vi.mocked(getSettings).mockResolvedValue({ ...defaultSettings, enableNotifications: false });
             vi.mocked(projectService.getAllProjects).mockResolvedValue([makeProject()]);
 
-            await syncAllProjects();
+            await syncAllProjects({ triggeredBy: 'scheduled' });
 
             expect(webhookService.sendSyncSummary).not.toHaveBeenCalled();
         });
