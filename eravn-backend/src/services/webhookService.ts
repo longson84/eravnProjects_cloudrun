@@ -67,14 +67,17 @@ export async function sendSyncSummary(sessions: SyncSession[], runId: string): P
 
     const statusEmoji = errorCount > 0 ? '🔴' : interruptedCount > 0 ? '🟡' : '🟢';
 
-    // Build per-project detail lines
-    const projectLines = sessions.map(s => {
-        const emoji = s.status === 'success' ? '✅' : s.status === 'error' ? '❌' : '⚠️';
-        const time = formatTime(s.timestamp, timezone);
-        const size = formatBytes(s.totalSizeSynced);
-        const duration = formatDuration(s.executionDurationSeconds);
-        return `${emoji} <b>${s.projectName}</b>\n     📄 ${s.filesCount} files  |  📦 ${size}  |  ⏱ ${duration}  |  🕐 ${time}`;
-    }).join('\n\n');
+    // Build per-project detail lines — only projects with at least 1 file synced
+    const syncedSessions = sessions.filter(s => s.filesCount > 0);
+    const projectLines = syncedSessions.length > 0
+        ? syncedSessions.map(s => {
+            const emoji = s.status === 'success' ? '✅' : s.status === 'error' ? '❌' : '⚠️';
+            const time = formatTime(s.timestamp, timezone);
+            const size = formatBytes(s.totalSizeSynced);
+            const duration = formatDuration(s.executionDurationSeconds);
+            return `${emoji} <b>${s.projectName}</b>\n     📄 ${s.filesCount} files  |  📦 ${size}  |  ⏱ ${duration}  |  🕐 ${time}`;
+        }).join('\n\n')
+        : '<i>Không có dự án nào sync file trong lần chạy này.</i>';
 
     // Error details
     const errorDetails = errorCount > 0
@@ -109,7 +112,7 @@ export async function sendSyncSummary(sessions: SyncSession[], runId: string): P
                 {
                     header: '📋 Chi tiết theo dự án',
                     widgets: [
-                        { textParagraph: { text: projectLines + errorDetails } },
+                        { textParagraph: { text: '🔗 <a href="https://sync.era.com.vn/logs">Xem chi tiết tại sync.era.com.vn/logs</a>\n\n' + projectLines + errorDetails } },
                     ],
                 },
             ],

@@ -95,10 +95,15 @@ describe('WebhookService', () => {
             const detailSection = payload.cards[0].sections[1];
             expect(detailSection.header).toContain('Chi tiết');
             const detailText = detailSection.widgets[0].textParagraph.text;
-            expect(detailText).toContain('Test Project');
-            expect(detailText).toContain('Project B');
+            // Only projects with files > 0 should appear in the project listing
+            expect(detailText).toContain('Test Project'); // 5 files
+            // Project B (0 files) should NOT have its own listing line with file/size/duration stats
+            expect(detailText).not.toMatch(/✅.*Project B|❌.*Project B|⚠️.*Project B/);
+            // But Project B should still appear in error details
             expect(detailText).toContain('Chi tiết lỗi');
-            expect(detailText).toContain('Test error');
+            expect(detailText).toContain('Project B: Test error');
+            // Logs link should be present
+            expect(detailText).toContain('sync.era.com.vn/logs');
         });
 
         it('should show green emoji when all success', async () => {
