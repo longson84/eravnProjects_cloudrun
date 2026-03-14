@@ -1,18 +1,18 @@
 // ==========================================
-// Auth Context - Admin Mode via Passphrase
+// Auth Context - Admin Mode via Backend Verification
 // ==========================================
 // Mặc định: mọi người chỉ XEM
-// Nhập đúng passphrase → mở khóa Admin Mode (tạo/sửa/xóa)
+// Nhập đúng passphrase → backend verify → mở khóa Admin Mode (tạo/sửa/xóa)
 // Trạng thái lưu trong sessionStorage → đóng tab = mất quyền
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { gasService } from '@/services/gasService';
 
-const ADMIN_PASSPHRASE = '123987456';
 const STORAGE_KEY = 'admin_unlocked';
 
 interface AuthContextType {
     isAdmin: boolean;
-    unlockAdmin: (passphrase: string) => boolean;
+    unlockAdmin: (passphrase: string) => Promise<boolean>;
     lockAdmin: () => void;
 }
 
@@ -23,13 +23,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return sessionStorage.getItem(STORAGE_KEY) === 'true';
     });
 
-    const unlockAdmin = useCallback((passphrase: string): boolean => {
-        if (passphrase === ADMIN_PASSPHRASE) {
-            setIsAdmin(true);
-            sessionStorage.setItem(STORAGE_KEY, 'true');
-            return true;
+    const unlockAdmin = useCallback(async (passphrase: string): Promise<boolean> => {
+        try {
+            const success = await gasService.verifyPassphrase(passphrase);
+            if (success) {
+                setIsAdmin(true);
+                sessionStorage.setItem(STORAGE_KEY, 'true');
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
         }
-        return false;
     }, []);
 
     const lockAdmin = useCallback(() => {

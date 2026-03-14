@@ -9,6 +9,7 @@ import { CONFIG } from './config.js';
 import logger from './logger.js';
 
 // Controllers
+import authController from './controllers/authController.js';
 import projectController from './controllers/projectController.js';
 import syncController from './controllers/syncController.js';
 import settingsController from './controllers/settingsController.js';
@@ -65,6 +66,7 @@ app.get('/health', (req, res) => {
 // API Routes
 // ==========================================
 
+app.use('/api/auth', authController);
 app.use('/api/projects', projectController);
 app.use('/api/sync', syncController);
 app.use('/api/settings', settingsController);

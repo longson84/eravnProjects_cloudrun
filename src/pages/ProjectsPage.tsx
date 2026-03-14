@@ -180,8 +180,9 @@ export function ProjectsPage() {
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const navigate = useNavigate();
 
-    const handleUnlock = () => {
-        if (unlockAdmin(passphrase)) {
+    const handleUnlock = async () => {
+        const success = await unlockAdmin(passphrase);
+        if (success) {
             setIsPassphraseOpen(false);
             setPassphrase('');
             setPassphraseError(false);

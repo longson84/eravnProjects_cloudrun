@@ -123,6 +123,17 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
 // ==========================================
 
 export const gasService = {
+    // Auth
+    verifyPassphrase: async (passphrase: string): Promise<boolean> => {
+        if (!isApiConfigured()) return passphrase === 'admin'; // mock fallback for local dev
+        try {
+            const { data } = await api.post('auth/verify', { passphrase });
+            return data.success === true;
+        } catch {
+            return false;
+        }
+    },
+
     // Projects
     getProjects: async (): Promise<Project[]> => {
         if (!isApiConfigured()) return getMockResponse('getProjects');

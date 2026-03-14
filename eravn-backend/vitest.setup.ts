@@ -10,6 +10,7 @@ process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 process.env.GOOGLE_REFRESH_TOKEN = 'test-refresh-token';
 process.env.CRON_SECRET = 'test-cron-secret';
+process.env.ADMIN_PASSPHRASE = 'test-admin-pass';
 process.env.WEBHOOK_URL = 'https://test-webhook.example.com';
 process.env.PORT = '8080';
 process.env.SYNC_CUTOFF_SECONDS = '300';

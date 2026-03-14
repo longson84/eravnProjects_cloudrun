@@ -9,6 +9,7 @@ export const CONFIG = {
 
     // Security
     CRON_SECRET: process.env.CRON_SECRET || '',
+    ADMIN_PASSPHRASE: process.env.ADMIN_PASSPHRASE || '',
 
     // Webhook
     WEBHOOK_URL: process.env.WEBHOOK_URL || '',

@@ -313,4 +313,33 @@ describe('API Integration Tests', () => {
             expect(Array.isArray(res.body)).toBe(true);
         });
     });
+
+    describe('Auth API', () => {
+        it('POST /api/auth/verify should succeed with correct passphrase', async () => {
+            const res = await request(app)
+                .post('/api/auth/verify')
+                .send({ passphrase: 'test-admin-pass' });
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+        });
+
+        it('POST /api/auth/verify should return 401 with wrong passphrase', async () => {
+            const res = await request(app)
+                .post('/api/auth/verify')
+                .send({ passphrase: 'wrong-password' });
+
+            expect(res.status).toBe(401);
+            expect(res.body.error).toContain('Sai mật khẩu');
+        });
+
+        it('POST /api/auth/verify should return 400 with missing passphrase', async () => {
+            const res = await request(app)
+                .post('/api/auth/verify')
+                .send({});
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('bắt buộc');
+        });
+    });
 });
