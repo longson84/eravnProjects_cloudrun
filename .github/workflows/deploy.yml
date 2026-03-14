@@ -101,7 +101,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://*.web.app,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://*.web.app,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }},ADMIN_PASSPHRASE=${{ secrets.ADMIN_PASSPHRASE }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
@@ -116,7 +116,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --service-account eravn-backend-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://eravn-projects-cloud-run.web.app;https://sync.era.com.vn,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},GCP_DATABASE_ID=eravnprojectscloudrun,CORS_ORIGINS=http://localhost:5173;https://eravn-projects-cloud-run.web.app;https://sync.era.com.vn,GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},GOOGLE_REFRESH_TOKEN=${{ secrets.GOOGLE_REFRESH_TOKEN }},ADMIN_PASSPHRASE=${{ secrets.ADMIN_PASSPHRASE }}" \
             --memory 1Gi \
             --cpu 1 \
             --max-instances 1 \
