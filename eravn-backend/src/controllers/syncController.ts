@@ -8,6 +8,7 @@ import { CONFIG } from '../config.js';
 import * as syncService from '../services/syncService.js';
 import * as projectService from '../services/projectService.js';
 import { requestStop } from '../services/stopSignalRegistry.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import logger from '../logger.js';
 
 const router = Router();
@@ -53,8 +54,8 @@ router.post('/all', verifyCronToken, async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/sync/:projectId — Sync a single project
-router.post('/:projectId', async (req: Request, res: Response) => {
+// POST /api/sync/:projectId — Sync a single project (Admin only)
+router.post('/:projectId', requireAdmin, async (req: Request, res: Response) => {
     try {
         const projectId = req.params.projectId as string;
         logger.info(`Single project sync trigger acknowledged for: ${projectId}. Starting background process.`);
@@ -78,8 +79,8 @@ router.post('/:projectId', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/sync/stop/:projectId — Request to stop a running sync
-router.post('/stop/:projectId', async (req: Request, res: Response) => {
+// POST /api/sync/stop/:projectId — Request to stop a running sync (Admin only)
+router.post('/stop/:projectId', requireAdmin, async (req: Request, res: Response) => {
     try {
         const projectId = req.params.projectId as string;
         const project = await projectService.getProjectById(projectId);

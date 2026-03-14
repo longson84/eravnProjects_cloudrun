@@ -29,6 +29,29 @@ const api = axios.create({
     },
 });
 
+// Axios request interceptor: attach admin token if available
+api.interceptors.request.use((config) => {
+    const token = sessionStorage.getItem('admin_token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+// Axios response interceptor: clear admin state on 401 (expired token)
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401 && sessionStorage.getItem('admin_token')) {
+            sessionStorage.removeItem('admin_token');
+            sessionStorage.removeItem('admin_unlocked');
+            // Optionally reload to reset UI state
+            window.location.reload();
+        }
+        return Promise.reject(error);
+    }
+);
+
 /** Check if API URL is configured */
 const isApiConfigured = (): boolean => !!API_URL;
 
@@ -124,13 +147,13 @@ async function getMockResponse<T>(functionName: string, ...args: any[]): Promise
 
 export const gasService = {
     // Auth
-    verifyPassphrase: async (passphrase: string): Promise<boolean> => {
-        if (!isApiConfigured()) return passphrase === 'admin'; // mock fallback for local dev
+    verifyPassphrase: async (passphrase: string): Promise<string | null> => {
+        if (!isApiConfigured()) return passphrase === 'admin' ? 'mock-token' : null;
         try {
             const { data } = await api.post('auth/verify', { passphrase });
-            return data.success === true;
+            return data.success ? data.token : null;
         } catch {
-            return false;
+            return null;
         }
     },
 

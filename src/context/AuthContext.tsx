@@ -2,13 +2,14 @@
 // Auth Context - Admin Mode via Backend Verification
 // ==========================================
 // Mặc định: mọi người chỉ XEM
-// Nhập đúng passphrase → backend verify → mở khóa Admin Mode (tạo/sửa/xóa)
-// Trạng thái lưu trong sessionStorage → đóng tab = mất quyền
+// Nhập đúng passphrase → backend verify → nhận token → mở khóa Admin Mode
+// Token + trạng thái lưu trong sessionStorage → đóng tab = mất quyền
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { gasService } from '@/services/gasService';
 
 const STORAGE_KEY = 'admin_unlocked';
+const TOKEN_KEY = 'admin_token';
 
 interface AuthContextType {
     isAdmin: boolean;
@@ -25,10 +26,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const unlockAdmin = useCallback(async (passphrase: string): Promise<boolean> => {
         try {
-            const success = await gasService.verifyPassphrase(passphrase);
-            if (success) {
+            const token = await gasService.verifyPassphrase(passphrase);
+            if (token) {
                 setIsAdmin(true);
                 sessionStorage.setItem(STORAGE_KEY, 'true');
+                sessionStorage.setItem(TOKEN_KEY, token);
                 return true;
             }
             return false;
@@ -40,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const lockAdmin = useCallback(() => {
         setIsAdmin(false);
         sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(TOKEN_KEY);
     }, []);
 
     return (

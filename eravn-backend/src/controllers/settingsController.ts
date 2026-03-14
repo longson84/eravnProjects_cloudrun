@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import * as settingsService from '../services/settingsService.js';
 import * as webhookService from '../services/webhookService.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import logger from '../logger.js';
 
 const router = Router();
@@ -20,8 +21,8 @@ router.get('/', async (req: Request, res: Response) => {
     }
 });
 
-// PUT /api/settings
-router.put('/', async (req: Request, res: Response) => {
+// PUT /api/settings — Admin only
+router.put('/', requireAdmin, async (req: Request, res: Response) => {
     try {
         const settings = await settingsService.updateSettings(req.body);
         res.json(settings);
@@ -31,8 +32,8 @@ router.put('/', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/settings/test-webhook
-router.post('/test-webhook', async (req: Request, res: Response) => {
+// POST /api/settings/test-webhook — Admin only
+router.post('/test-webhook', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await webhookService.testWebhook(req.body.url);
         res.json({ success: result });

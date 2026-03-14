@@ -76,6 +76,7 @@ vi.mock('googleapis', () => {
 });
 
 import app from '../../app.js';
+import { generateAdminToken } from '../../middleware/requireAdmin.js';
 import * as projectService from '../../services/projectService.js';
 import * as syncService from '../../services/syncService.js';
 import * as settingsService from '../../services/settingsService.js';
@@ -84,8 +85,12 @@ import * as dashboardService from '../../services/dashboardService.js';
 import type { Project, AppSettings, DashboardData } from '../../types.js';
 
 describe('API Integration Tests', () => {
+    // Helper: generate a valid admin token for protected routes
+    let adminToken: string;
+
     beforeEach(() => {
         vi.clearAllMocks();
+        adminToken = generateAdminToken();
     });
 
     describe('Health Check', () => {
@@ -134,16 +139,28 @@ describe('API Integration Tests', () => {
 
             const res = await request(app)
                 .post('/api/projects')
+                .set('Authorization', `Bearer ${adminToken}`)
                 .send({ name: 'New Project', sourceFolderId: 'src', destFolderId: 'dst' });
 
             expect(res.status).toBe(201);
             expect(res.body.id).toBe('proj-1');
         });
 
+        it('POST /api/projects should return 401 without admin token', async () => {
+            const res = await request(app)
+                .post('/api/projects')
+                .send({ name: 'New Project' });
+
+            expect(res.status).toBe(401);
+        });
+
         it('POST /api/projects should return 400 on validation error', async () => {
             vi.mocked(projectService.createProject).mockRejectedValue(new Error('Tên dự án là bắt buộc'));
 
-            const res = await request(app).post('/api/projects').send({});
+            const res = await request(app)
+                .post('/api/projects')
+                .set('Authorization', `Bearer ${adminToken}`)
+                .send({});
 
             expect(res.status).toBe(400);
             expect(res.body.error).toContain('Tên dự án');
@@ -172,6 +189,7 @@ describe('API Integration Tests', () => {
 
             const res = await request(app)
                 .put('/api/projects/proj-1')
+                .set('Authorization', `Bearer ${adminToken}`)
                 .send({ name: 'Updated' });
 
             expect(res.status).toBe(200);
@@ -181,10 +199,17 @@ describe('API Integration Tests', () => {
         it('DELETE /api/projects/:id should delete project', async () => {
             vi.mocked(projectService.deleteProject).mockResolvedValue({ success: true });
 
-            const res = await request(app).delete('/api/projects/proj-1');
+            const res = await request(app)
+                .delete('/api/projects/proj-1')
+                .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
+        });
+
+        it('DELETE /api/projects/:id should return 401 without token', async () => {
+            const res = await request(app).delete('/api/projects/proj-1');
+            expect(res.status).toBe(401);
         });
     });
 
@@ -232,11 +257,18 @@ describe('API Integration Tests', () => {
                 stats: { filesCount: 5, totalSizeSynced: 1000, failedCount: 0, status: 'success' },
             });
 
-            const res = await request(app).post('/api/sync/proj-1');
+            const res = await request(app)
+                .post('/api/sync/proj-1')
+                .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
             expect(res.body.status).toBe('processing');
+        });
+
+        it('POST /api/sync/:projectId should return 401 without token', async () => {
+            const res = await request(app).post('/api/sync/proj-1');
+            expect(res.status).toBe(401);
         });
     });
 
@@ -266,10 +298,19 @@ describe('API Integration Tests', () => {
 
             const res = await request(app)
                 .put('/api/settings')
+                .set('Authorization', `Bearer ${adminToken}`)
                 .send({ maxRetries: 5 });
 
             expect(res.status).toBe(200);
             expect(res.body.maxRetries).toBe(5);
+        });
+
+        it('PUT /api/settings should return 401 without token', async () => {
+            const res = await request(app)
+                .put('/api/settings')
+                .send({ maxRetries: 5 });
+
+            expect(res.status).toBe(401);
         });
     });
 
@@ -315,13 +356,15 @@ describe('API Integration Tests', () => {
     });
 
     describe('Auth API', () => {
-        it('POST /api/auth/verify should succeed with correct passphrase', async () => {
+        it('POST /api/auth/verify should return token with correct passphrase', async () => {
             const res = await request(app)
                 .post('/api/auth/verify')
                 .send({ passphrase: 'test-admin-pass' });
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
+            expect(res.body.token).toBeTruthy();
+            expect(typeof res.body.token).toBe('string');
         });
 
         it('POST /api/auth/verify should return 401 with wrong passphrase', async () => {
@@ -340,6 +383,28 @@ describe('API Integration Tests', () => {
 
             expect(res.status).toBe(400);
             expect(res.body.error).toContain('bắt buộc');
+        });
+
+        it('returned token should work for protected routes', async () => {
+            // Get token from verify endpoint
+            const authRes = await request(app)
+                .post('/api/auth/verify')
+                .send({ passphrase: 'test-admin-pass' });
+
+            const { token } = authRes.body;
+
+            // Use token to access protected route
+            vi.mocked(projectService.createProject).mockResolvedValue({
+                id: 'proj-new',
+                name: 'Token Test',
+            } as any);
+
+            const res = await request(app)
+                .post('/api/projects')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ name: 'Token Test' });
+
+            expect(res.status).toBe(201);
         });
     });
 });

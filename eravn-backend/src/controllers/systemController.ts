@@ -5,12 +5,13 @@
 import { Router, Request, Response } from 'express';
 import * as repo from '../repositories/firestoreRepository.js';
 import * as projectService from '../services/projectService.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import logger from '../logger.js';
 
 const router = Router();
 
-// POST /api/system/reset-database
-router.post('/reset-database', async (req: Request, res: Response) => {
+// POST /api/system/reset-database — Admin only
+router.post('/reset-database', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await repo.resetDatabase();
         res.json({ success: result });
@@ -20,8 +21,8 @@ router.post('/reset-database', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/system/soft-reset
-router.post('/soft-reset', async (req: Request, res: Response) => {
+// POST /api/system/soft-reset — Admin only
+router.post('/soft-reset', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await projectService.softReset();
         res.json({ success: result });

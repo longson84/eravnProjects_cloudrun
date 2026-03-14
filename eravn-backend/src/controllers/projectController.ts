@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import * as projectService from '../services/projectService.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import logger from '../logger.js';
 
 const router = Router();
@@ -41,8 +42,8 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/projects
-router.post('/', async (req: Request, res: Response) => {
+// POST /api/projects — Admin only
+router.post('/', requireAdmin, async (req: Request, res: Response) => {
     try {
         const project = await projectService.createProject(req.body);
         res.status(201).json(project);
@@ -52,8 +53,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
 });
 
-// PUT /api/projects/:id
-router.put('/:id', async (req: Request, res: Response) => {
+// PUT /api/projects/:id — Admin only
+router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const project = await projectService.updateProject({ ...req.body, id: req.params.id as string });
         res.json(project);
@@ -63,8 +64,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 });
 
-// DELETE /api/projects/:id
-router.delete('/:id', async (req: Request, res: Response) => {
+// DELETE /api/projects/:id — Admin only
+router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await projectService.deleteProject(req.params.id as string);
         res.json(result);
@@ -74,8 +75,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/projects/:id/reset
-router.post('/:id/reset', async (req: Request, res: Response) => {
+// POST /api/projects/:id/reset — Admin only
+router.post('/:id/reset', requireAdmin, async (req: Request, res: Response) => {
     try {
         const project = await projectService.resetProject(req.params.id as string);
         res.json(project);

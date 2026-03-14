@@ -4,6 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import * as syncLogService from '../services/syncLogService.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import logger from '../logger.js';
 
 const router = Router();
@@ -35,8 +36,8 @@ router.get('/:sessionId/details', async (req: Request, res: Response) => {
     }
 });
 
-// POST /api/logs/:sessionId/continue
-router.post('/:sessionId/continue', async (req: Request, res: Response) => {
+// POST /api/logs/:sessionId/continue — Admin only
+router.post('/:sessionId/continue', requireAdmin, async (req: Request, res: Response) => {
     try {
         const result = await syncLogService.continueSyncProject(
             req.params.sessionId as string,
