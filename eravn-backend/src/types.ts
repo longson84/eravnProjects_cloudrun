@@ -45,7 +45,6 @@ export interface SyncSession {
     totalSizeSynced: number;
     errorMessage?: string;
     triggeredBy?: 'manual' | 'scheduled';
-    retryOf?: string | null;
     continueId?: string | null;
 }
 

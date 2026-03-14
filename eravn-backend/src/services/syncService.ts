@@ -220,7 +220,6 @@ async function syncSingleProject(
         failedFilesCount: 0,
         totalSizeSynced: 0,
         triggeredBy,
-        retryOf: null,
         continueId: null,
     };
 
