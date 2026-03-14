@@ -1,67 +1,14 @@
 // ==========================================
-// Projects Page - Project Management
+// Projects Page - Orchestrator
 // ==========================================
+// State management & event handlers live here.
+// All rendering is delegated to child components.
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-    Plus,
-    Search,
-    FolderSync,
-    ExternalLink,
-    Play,
-    Pause,
-    Pencil,
-    Trash2,
-    RefreshCw,
-    RotateCcw,
-    AlertCircle,
-    CheckCircle2,
-    XCircle,
-    Loader2,
-    LayoutGrid,
-    List,
-    Calendar,
-    CalendarDays,
-    Square,
-    Lock,
-    LockOpen,
-    ShieldCheck,
-    Upload,
-    FileSpreadsheet,
-    CheckCircle,
-    XOctagon,
-} from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Search, FolderSync, Loader2 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { StopSyncModal } from '@/components/StopSyncModal';
 import type { Project } from '@/types/types';
 import {
@@ -72,84 +19,27 @@ import {
     useSyncProject,
     useSyncAllProjects,
     useResetProject,
-    useStopSync
+    useStopSync,
 } from '@/hooks/useProjects';
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings';
 import { useAuth } from '@/context/AuthContext';
 
-// ==========================================
-// CSV Parsing Utility
-// ==========================================
-interface ImportRow {
-    name: string;
-    sourceFolderLink: string;
-    destFolderLink: string;
-}
-
-function parseCSV(text: string): ImportRow[] {
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
-    if (lines.length < 2) return []; // header + at least 1 data row
-
-    const rows: ImportRow[] = [];
-    for (let i = 1; i < lines.length; i++) {
-        const fields = parseCSVLine(lines[i]);
-        if (fields.length >= 3 && fields[0].trim()) {
-            rows.push({
-                name: fields[0].trim(),
-                sourceFolderLink: fields[1].trim(),
-                destFolderLink: fields[2].trim(),
-            });
-        }
-    }
-    return rows;
-}
-
-/** Parse a single CSV line, handling quoted fields */
-function parseCSVLine(line: string): string[] {
-    const fields: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (inQuotes) {
-            if (ch === '"') {
-                if (i + 1 < line.length && line[i + 1] === '"') {
-                    current += '"';
-                    i++; // skip escaped quote
-                } else {
-                    inQuotes = false;
-                }
-            } else {
-                current += ch;
-            }
-        } else {
-            if (ch === '"') {
-                inQuotes = true;
-            } else if (ch === ',') {
-                fields.push(current);
-                current = '';
-            } else {
-                current += ch;
-            }
-        }
-    }
-    fields.push(current);
-    return fields;
-}
+// Sub-components
+import { ProjectsPageHeader } from './projects/ProjectsPageHeader';
+import { ProjectCardGrid } from './projects/ProjectCardGrid';
+import { ProjectListTable } from './projects/ProjectListTable';
+import { ProjectFormDialog } from './projects/ProjectFormDialog';
+import { ImportCsvDialog } from './projects/ImportCsvDialog';
+import { SyncResultDialog, type SyncResultState } from './projects/SyncResultDialog';
+import { PassphraseDialog } from './projects/PassphraseDialog';
 
 export function ProjectsPage() {
     const { isAdmin, unlockAdmin, lockAdmin } = useAuth();
-    const [isPassphraseOpen, setIsPassphraseOpen] = useState(false);
-    const [passphrase, setPassphrase] = useState('');
-    const [passphraseError, setPassphraseError] = useState(false);
+    const navigate = useNavigate();
 
-    const [stopModal, setStopModal] = useState<{ isOpen: boolean; projectId: string; projectName: string }>({
-        isOpen: false,
-        projectId: '',
-        projectName: ''
-    });
-
+    // ==========================================
+    // Data hooks
+    // ==========================================
     const { data: projects = [], isLoading: isProjectsLoading, refetch } = useProjects();
     const { data: settings } = useSettings();
 
@@ -162,91 +52,26 @@ export function ProjectsPage() {
     const updateSettingsMutation = useUpdateSettings();
     const stopSyncMutation = useStopSync();
 
+    // ==========================================
+    // Local state
+    // ==========================================
     const [search, setSearch] = useState('');
-    const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [editingProject, setEditingProject] = useState<Project | null>(null);
-    const [syncingId, setSyncingId] = useState<string | null>(null);
-
-    // Import CSV state
-    const [isImportOpen, setIsImportOpen] = useState(false);
-    const [importRows, setImportRows] = useState<ImportRow[]>([]);
-    const [importSyncDate, setImportSyncDate] = useState(new Date().toISOString().split('T')[0]);
-    const [importProgress, setImportProgress] = useState<{ current: number; total: number; status: 'idle' | 'importing' | 'done' | 'error'; errors: string[] }>({
-        current: 0, total: 0, status: 'idle', errors: []
-    });
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // View mode state
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const navigate = useNavigate();
+    const [syncingId, setSyncingId] = useState<string | null>(null);
+    const [editingProject, setEditingProject] = useState<Project | null>(null);
 
-    const handleUnlock = async () => {
-        const success = await unlockAdmin(passphrase);
-        if (success) {
-            setIsPassphraseOpen(false);
-            setPassphrase('');
-            setPassphraseError(false);
-        } else {
-            setPassphraseError(true);
-        }
-    };
-
-    const handleLockToggle = () => {
-        if (isAdmin) {
-            lockAdmin();
-        } else {
-            setPassphrase('');
-            setPassphraseError(false);
-            setIsPassphraseOpen(true);
-        }
-    };
-    const [syncResult, setSyncResult] = useState<{
-        open: boolean;
-        success: boolean;
-        message: string;
-        stats?: {
-            filesCount: number;
-            totalSizeSynced: number;
-            failedCount: number;
-            status: string;
-        };
-    }>({ open: false, success: false, message: '' });
-
-    // Load view mode from localStorage on mount
-    useEffect(() => {
-        const savedMode = localStorage.getItem('projects_view_mode');
-        if (savedMode === 'grid' || savedMode === 'list') {
-            setViewMode(savedMode);
-        }
-    }, []);
-
-    const handleManualSyncConfirmation = async (action: () => Promise<void>) => {
-        if (settings?.enableAutoSchedule) {
-            try {
-                await updateSettingsMutation.mutateAsync({ ...settings, enableAutoSchedule: false });
-            } catch (error) {
-                console.error("Failed to disable auto schedule:", error);
-            }
-        }
-
-        await action();
-    };
-
-    // Save view mode when changed
-    const handleViewModeChange = (mode: 'grid' | 'list') => {
-        setViewMode(mode);
-        localStorage.setItem('projects_view_mode', mode);
-    };
-
-    // Form state
-    const [formData, setFormData] = useState({
-        name: '',
-        description: '',
-        sourceFolderLink: '',
-        destFolderLink: '',
-        syncStartDate: new Date().toISOString().split('T')[0], // Default to today YYYY-MM-DD
+    // Dialog state
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isPassphraseOpen, setIsPassphraseOpen] = useState(false);
+    const [syncResult, setSyncResult] = useState<SyncResultState>({ open: false, success: false, message: '' });
+    const [stopModal, setStopModal] = useState<{ isOpen: boolean; projectId: string; projectName: string }>({
+        isOpen: false, projectId: '', projectName: '',
     });
 
+    // ==========================================
+    // Derived data
+    // ==========================================
     const filteredProjects = projects.filter(
         (p) =>
             !p.isDeleted &&
@@ -254,157 +79,81 @@ export function ProjectsPage() {
                 p.description.toLowerCase().includes(search.toLowerCase()))
     );
 
-    const extractGoogleDriveId = (input: string): string | null => {
-        const trimmed = input.trim();
-        if (!trimmed) return null;
+    const timezone = settings?.timezone || 'Asia/Ho_Chi_Minh';
 
-        // Nếu user nhập trực tiếp ID (không chứa dấu / hay khoảng trắng)
-        if (/^[a-zA-Z0-9_-]{10,}$/.test(trimmed)) {
-            return trimmed;
-        }
-
-        const patterns = [
-            /folders\/([a-zA-Z0-9_-]{10,})/,           // folder
-            /file\/d\/([a-zA-Z0-9_-]{10,})/,           // file
-            /document\/d\/([a-zA-Z0-9_-]{10,})/,       // google doc
-            /spreadsheets\/d\/([a-zA-Z0-9_-]{10,})/,   // sheet
-            /presentation\/d\/([a-zA-Z0-9_-]{10,})/,   // slide
-            /open\?id=([a-zA-Z0-9_-]{10,})/,           // open?id=
-        ];
-
-        for (const pattern of patterns) {
-            const match = trimmed.match(pattern);
-            if (match) return match[1];
-        }
-
-        return null;
-    };
-
-    const extractFolderId = (link: string): string => {
-        return extractGoogleDriveId(link) ?? link;
-    };
-
-    const validateFolderLink = (link: string): boolean => {
-        return extractGoogleDriveId(link) !== null;
-    };
-
-    const resetForm = () => {
-        setFormData({
-            name: '',
-            description: '',
-            sourceFolderLink: '',
-            destFolderLink: '',
-            syncStartDate: new Date().toISOString().split('T')[0]
+    // ==========================================
+    // Formatters (depend on timezone)
+    // ==========================================
+    const formatDate = (dateStr: string | null) => {
+        if (!dateStr) return 'Chưa có';
+        return new Date(dateStr).toLocaleString('vi-VN', {
+            timeZone: timezone,
+            hour: '2-digit', minute: '2-digit',
+            day: 'numeric', month: 'numeric', year: '2-digit',
         });
-        setEditingProject(null);
     };
 
-    const handleOpenCreate = () => {
-        resetForm();
-        setIsCreateOpen(true);
+    const formatDateShort = (dateStr: string) => {
+        return new Date(dateStr).toLocaleDateString('vi-VN', {
+            timeZone: timezone,
+            day: 'numeric', month: 'numeric', year: '2-digit',
+        });
     };
 
     // ==========================================
-    // Import CSV Handlers
+    // Load view mode from localStorage
     // ==========================================
-    const handleImportFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            const text = evt.target?.result as string;
-            const rows = parseCSV(text);
-            setImportRows(rows);
-            setImportProgress({ current: 0, total: rows.length, status: 'idle', errors: [] });
-        };
-        reader.readAsText(file);
-        // Reset file input so re-selecting the same file triggers onChange
-        e.target.value = '';
+    useEffect(() => {
+        const savedMode = localStorage.getItem('projects_view_mode');
+        if (savedMode === 'grid' || savedMode === 'list') {
+            setViewMode(savedMode);
+        }
     }, []);
 
-    const handleImportOpen = () => {
-        setImportRows([]);
-        setImportSyncDate(new Date().toISOString().split('T')[0]);
-        setImportProgress({ current: 0, total: 0, status: 'idle', errors: [] });
-        setIsImportOpen(true);
+    const handleViewModeChange = (mode: 'grid' | 'list') => {
+        setViewMode(mode);
+        localStorage.setItem('projects_view_mode', mode);
     };
 
-    const handleImportConfirm = async () => {
-        if (importRows.length === 0) return;
-
-        setImportProgress({ current: 0, total: importRows.length, status: 'importing', errors: [] });
-        const errors: string[] = [];
-
-        for (let i = 0; i < importRows.length; i++) {
-            const row = importRows[i];
-            try {
-                const projectData: Partial<Project> = {
-                    name: row.name,
-                    description: '',
-                    sourceFolderLink: row.sourceFolderLink,
-                    sourceFolderId: extractFolderId(row.sourceFolderLink),
-                    destFolderLink: row.destFolderLink,
-                    destFolderId: extractFolderId(row.destFolderLink),
-                    syncStartDate: importSyncDate || undefined,
-                    status: 'active',
-                };
-                await createProjectMutation.mutateAsync(projectData);
-            } catch (err) {
-                errors.push(`#${i + 1} "${row.name}": ${(err as Error).message}`);
-            }
-            setImportProgress(prev => ({ ...prev, current: i + 1, errors: [...errors] }));
+    // ==========================================
+    // Admin handlers
+    // ==========================================
+    const handleLockToggle = () => {
+        if (isAdmin) {
+            lockAdmin();
+        } else {
+            setIsPassphraseOpen(true);
         }
-
-        setImportProgress(prev => ({
-            ...prev,
-            status: errors.length > 0 ? 'error' : 'done',
-        }));
     };
 
-    const handleRemoveImportRow = (index: number) => {
-        setImportRows(prev => prev.filter((_, i) => i !== index));
+    // ==========================================
+    // Manual sync confirmation (disables auto-schedule)
+    // ==========================================
+    const handleManualSyncConfirmation = async (action: () => Promise<void>) => {
+        if (settings?.enableAutoSchedule) {
+            try {
+                await updateSettingsMutation.mutateAsync({ ...settings, enableAutoSchedule: false });
+            } catch (error) {
+                console.error('Failed to disable auto schedule:', error);
+            }
+        }
+        await action();
     };
 
-    const handleOpenEdit = (project: Project) => {
-        setFormData({
-            name: project.name,
-            description: project.description,
-            sourceFolderLink: project.sourceFolderLink,
-            destFolderLink: project.destFolderLink,
-            syncStartDate: project.syncStartDate || '',
-        });
-        setEditingProject(project);
-        setIsCreateOpen(true);
-    };
-
-    const handleSubmit = async () => {
-        if (!formData.name || !formData.sourceFolderLink || !formData.destFolderLink) return;
-        if (!validateFolderLink(formData.sourceFolderLink) || !validateFolderLink(formData.destFolderLink)) return;
-
+    // ==========================================
+    // Project actions
+    // ==========================================
+    const handleSubmit = async (projectData: Partial<Project>) => {
         try {
-            const projectData: Partial<Project> = {
-                name: formData.name,
-                description: formData.description,
-                sourceFolderLink: formData.sourceFolderLink,
-                sourceFolderId: extractFolderId(formData.sourceFolderLink),
-                destFolderLink: formData.destFolderLink,
-                destFolderId: extractFolderId(formData.destFolderLink),
-                syncStartDate: formData.syncStartDate || undefined, // undefined if empty string
-                status: 'active',
-            };
-
             if (editingProject) {
                 await updateProjectMutation.mutateAsync({ ...editingProject, ...projectData });
             } else {
                 await createProjectMutation.mutateAsync(projectData);
             }
-
             setIsCreateOpen(false);
-            resetForm();
+            setEditingProject(null);
         } catch (error) {
             console.error('Failed to save project:', error);
-            // Optional: Show error toast here if needed
         }
     };
 
@@ -425,20 +174,10 @@ export function ProjectsPage() {
         }
     };
 
-    const formatBytes = (bytes: number, decimals = 2): string => {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-    };
-
     const handleSync = async (projectId: string) => {
         setSyncingId(projectId);
         try {
             await syncProjectMutation.mutateAsync(projectId);
-
             setSyncResult({
                 open: true,
                 success: true,
@@ -448,7 +187,7 @@ export function ProjectsPage() {
             setSyncResult({
                 open: true,
                 success: false,
-                message: 'Sync failed: ' + (e as Error).message
+                message: 'Sync failed: ' + (e as Error).message,
             });
         } finally {
             setSyncingId(null);
@@ -458,29 +197,16 @@ export function ProjectsPage() {
     const handleStopSync = (projectId: string) => {
         const project = projects.find(p => p.id === projectId);
         if (project) {
-            setStopModal({
-                isOpen: true,
-                projectId: project.id,
-                projectName: project.name
-            });
+            setStopModal({ isOpen: true, projectId: project.id, projectName: project.name });
         }
     };
 
     const handleSyncAll = async () => {
         try {
             const result = await syncAllMutation.mutateAsync();
-
-            setSyncResult({
-                open: true,
-                success: result.success,
-                message: result.message,
-            });
+            setSyncResult({ open: true, success: result.success, message: result.message });
         } catch (e) {
-            setSyncResult({
-                open: true,
-                success: false,
-                message: 'Sync All failed: ' + (e as Error).message
-            });
+            setSyncResult({ open: true, success: false, message: 'Sync All failed: ' + (e as Error).message });
         }
     };
 
@@ -489,253 +215,55 @@ export function ProjectsPage() {
         await updateProjectMutation.mutateAsync({ ...project, status: newStatus });
     };
 
-    const timezone = settings?.timezone || 'Asia/Ho_Chi_Minh';
-
-    const formatDate = (dateStr: string | null) => {
-        if (!dateStr) return 'Chưa có';
-        return new Date(dateStr).toLocaleString('vi-VN', {
-            timeZone: timezone,
-            hour: '2-digit', minute: '2-digit',
-            day: 'numeric', month: 'numeric', year: '2-digit'
-        });
+    const handleOpenEdit = (project: Project) => {
+        setEditingProject(project);
+        setIsCreateOpen(true);
     };
 
-    const formatDateShort = (dateStr: string) => {
-        return new Date(dateStr).toLocaleDateString('vi-VN', {
-            timeZone: timezone,
-            day: 'numeric', month: 'numeric', year: '2-digit'
-        });
+    const handleOpenCreate = () => {
+        setEditingProject(null);
+        setIsCreateOpen(true);
     };
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'active':
-                return <Badge variant="success"><CheckCircle2 className="w-3 h-3 mr-1" />Hoạt động</Badge>;
-            case 'paused':
-                return <Badge variant="warning"><Pause className="w-3 h-3 mr-1" />Tạm dừng</Badge>;
-            case 'error':
-                return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Lỗi</Badge>;
-            default:
-                return <Badge variant="secondary">{status}</Badge>;
-        }
+    const handleCreateProjectForImport = async (data: Partial<Project>) => {
+        await createProjectMutation.mutateAsync(data);
     };
 
+    // ==========================================
+    // Shared action props for view components
+    // ==========================================
+    const viewProps = {
+        projects: filteredProjects,
+        isAdmin,
+        syncingId,
+        stopSyncPending: stopSyncMutation.isPending,
+        onSync: (id: string) => handleManualSyncConfirmation(() => handleSync(id)),
+        onStop: handleStopSync,
+        onToggleStatus: handleToggleStatus,
+        onEdit: handleOpenEdit,
+        onReset: handleReset,
+        onDelete: handleDelete,
+        formatDate,
+        formatDateShort,
+    };
+
+    // ==========================================
+    // Render
+    // ==========================================
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Dự án</h1>
-                        <p className="text-muted-foreground mt-1">
-                            Quản lý các cặp thư mục đồng bộ Source → Destination
-                        </p>
-                    </div>
-                    {/* Admin Lock/Unlock Toggle */}
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant={isAdmin ? 'default' : 'ghost'}
-                                    size="icon"
-                                    className={`h-9 w-9 shrink-0 transition-all duration-200 ${
-                                        isAdmin
-                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                    }`}
-                                    onClick={handleLockToggle}
-                                >
-                                    {isAdmin ? <LockOpen className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                {isAdmin ? 'Đang ở chế độ Quản trị — Click để khóa' : 'Mở khóa Quản trị'}
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                    {isAdmin && (
-                        <Badge variant="success" className="gap-1 text-xs animate-in fade-in slide-in-from-left-2 duration-200">
-                            <ShieldCheck className="w-3 h-3" />
-                            Admin
-                        </Badge>
-                    )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {/* View Mode Toggle */}
-                    <div className="flex items-center bg-muted rounded-md p-1 border">
-                        <Button
-                            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleViewModeChange('grid')}
-                            title="Dạng lưới"
-                        >
-                            <LayoutGrid className="w-4 h-4" />
-                        </Button>
-                        <Button
-                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => handleViewModeChange('list')}
-                            title="Dạng danh sách"
-                        >
-                            <List className="w-4 h-4" />
-                        </Button>
-                    </div>
-
-                    {isAdmin && (
-                    <Button
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => handleManualSyncConfirmation(handleSyncAll)}
-                        disabled={syncAllMutation.isPending || isProjectsLoading || filteredProjects.length === 0}
-                        title="Chạy Sync All cho tất cả dự án (manual)"
-                    >
-                        {syncAllMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-4 h-4" />
-                        )}
-                        Sync All
-                    </Button>
-                    )}
-
-                    {isAdmin && (
-                    <Button
-                        variant="outline"
-                        className="gap-2"
-                        onClick={handleImportOpen}
-                    >
-                        <Upload className="w-4 h-4" />
-                        Import CSV
-                    </Button>
-                    )}
-
-                    {isAdmin && (
-                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={handleOpenCreate} className="gap-2">
-                                <Plus className="w-4 h-4" /> Thêm dự án
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[550px]">
-                            <DialogHeader>
-                                <DialogTitle>
-                                    {editingProject ? 'Chỉnh sửa dự án' : 'Thêm dự án mới'}
-                                </DialogTitle>
-                                <DialogDescription>
-                                    Cấu hình cặp thư mục Source và Destination cho đồng bộ tự động.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                                <div className="grid gap-2">
-                                    <Label htmlFor="name">Tên dự án *</Label>
-                                    <Input
-                                        id="name"
-                                        placeholder="VD: Dự án Vinhomes Grand Park"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="description">Mô tả</Label>
-                                    <Textarea
-                                        id="description"
-                                        placeholder="Mô tả ngắn gọn về dự án..."
-                                        value={formData.description}
-                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="syncStartDate" className="flex items-center gap-2">
-                                        Ngày bắt đầu đồng bộ
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger>
-                                                    <AlertCircle className="w-3.5 h-3.5 text-muted-foreground" />
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p className="max-w-xs">Chỉ đồng bộ các file được tạo hoặc sửa đổi từ ngày này trở đi. Bỏ trống để đồng bộ toàn bộ lịch sử.</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </Label>
-                                    <div className="relative">
-                                        <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                        <Input
-                                            id="syncStartDate"
-                                            type="date"
-                                            className="pl-9"
-                                            value={formData.syncStartDate}
-                                            onChange={(e) => setFormData({ ...formData, syncStartDate: e.target.value })}
-                                        />
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Mặc định là hôm nay. Chỉ nên chỉnh sửa nếu bạn muốn đồng bộ dữ liệu cũ hơn.
-                                    </p>
-                                </div>
-                                <Separator />
-                                <div className="grid gap-2">
-                                    <Label htmlFor="sourceLink">
-                                        Source Folder Link *
-                                        <span className="text-xs text-muted-foreground ml-2">(Link hoặc ID thư mục đối tác)</span>
-                                    </Label>
-                                    <Input
-                                        id="sourceLink"
-                                        placeholder="https://drive.google.com/drive/folders/..."
-                                        value={formData.sourceFolderLink}
-                                        onChange={(e) => setFormData({ ...formData, sourceFolderLink: e.target.value })}
-                                        className={formData.sourceFolderLink && !validateFolderLink(formData.sourceFolderLink) ? 'border-red-500' : ''}
-                                    />
-                                    {formData.sourceFolderLink && !validateFolderLink(formData.sourceFolderLink) && (
-                                        <p className="text-xs text-red-500 flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" /> Link không hợp lệ
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="destLink">
-                                        Destination Folder Link *
-                                        <span className="text-xs text-muted-foreground ml-2">(Link thư mục nội bộ)</span>
-                                    </Label>
-                                    <Input
-                                        id="destLink"
-                                        placeholder="https://drive.google.com/drive/folders/..."
-                                        value={formData.destFolderLink}
-                                        onChange={(e) => setFormData({ ...formData, destFolderLink: e.target.value })}
-                                        className={formData.destFolderLink && !validateFolderLink(formData.destFolderLink) ? 'border-red-500' : ''}
-                                    />
-                                    {formData.destFolderLink && !validateFolderLink(formData.destFolderLink) && (
-                                        <p className="text-xs text-red-500 flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" /> Link không hợp lệ
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }} disabled={createProjectMutation.isPending || updateProjectMutation.isPending}>
-                                    Hủy
-                                </Button>
-                                <Button
-                                    onClick={handleSubmit}
-                                    disabled={!formData.name || !formData.sourceFolderLink || !formData.destFolderLink || createProjectMutation.isPending || updateProjectMutation.isPending}
-                                >
-                                    {createProjectMutation.isPending || updateProjectMutation.isPending ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                            Đang xử lý...
-                                        </>
-                                    ) : (
-                                        editingProject ? 'Cập nhật' : 'Tạo dự án'
-                                    )}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                    )}
-                </div>
-            </div>
+            <ProjectsPageHeader
+                isAdmin={isAdmin}
+                onLockToggle={handleLockToggle}
+                viewMode={viewMode}
+                onViewModeChange={handleViewModeChange}
+                onSyncAll={() => handleManualSyncConfirmation(handleSyncAll)}
+                onImportOpen={() => setIsImportOpen(true)}
+                onCreateOpen={handleOpenCreate}
+                isSyncAllPending={syncAllMutation.isPending}
+                isLoading={isProjectsLoading}
+                projectCount={filteredProjects.length}
+            />
 
             {/* Search */}
             <div className="relative max-w-sm">
@@ -760,676 +288,53 @@ export function ProjectsPage() {
                     <p className="text-sm text-muted-foreground mt-1">Thêm dự án mới để bắt đầu đồng bộ</p>
                 </Card>
             ) : viewMode === 'grid' ? (
-                // GRID VIEW
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredProjects.map((project) => (
-                        <Card key={project.id} className="group relative overflow-hidden hover:shadow-lg transition-all duration-200">
-                            {/* Status indicator stripe */}
-                            <div className={`absolute top-0 left-0 right-0 h-1 ${project.status === 'active' ? 'bg-emerald-500' :
-                                project.status === 'error' ? 'bg-red-500' : 'bg-amber-500'
-                                }`} />
-
-                            <CardHeader className="pb-3">
-                                <div className="flex items-start justify-between">
-                                    <div className="space-y-1 flex-1 min-w-0">
-                                        <CardTitle className="text-base truncate">{project.name}</CardTitle>
-                                        <CardDescription className="line-clamp-2">{project.description}</CardDescription>
-                                    </div>
-                                    {getStatusBadge(project.status)}
-                                </div>
-                            </CardHeader>
-
-                            <CardContent className="space-y-4">
-                                {/* Folder links */}
-                                <div className="space-y-2">
-                                    <div className="flex items-center text-xs">
-                                        <span className="text-muted-foreground w-16 shrink-0">Nguồn:</span>
-                                        <a
-                                            href={project.sourceFolderLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-primary hover:underline truncate flex items-center gap-1 min-w-0 flex-1"
-                                        >
-                                            {project.sourceFolderId}
-                                            <ExternalLink className="w-3 h-3 shrink-0" />
-                                        </a>
-                                    </div>
-                                    <div className="flex items-center text-xs">
-                                        <span className="text-muted-foreground w-16 shrink-0">Đích:</span>
-                                        <a
-                                            href={project.destFolderLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-primary hover:underline truncate flex items-center gap-1 min-w-0 flex-1"
-                                        >
-                                            {project.destFolderId}
-                                            <ExternalLink className="w-3 h-3 shrink-0" />
-                                        </a>
-                                    </div>
-
-                                    {project.syncStartDate && (
-                                        <div className="flex items-center text-xs pt-1">
-                                            <span className="text-muted-foreground w-16 shrink-0">Sync từ:</span>
-                                            <div className="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
-                                                <Calendar className="w-3 h-3" />
-                                                <span>{formatDateShort(project.syncStartDate)}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <Separator />
-
-                                {/* Stats */}
-                                <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-                                    <div className="flex items-center justify-between">
-                                        <span>Sync hôm nay:</span>
-                                        <span className="font-medium text-foreground">{project.stats?.todayFiles || 0} files</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Sync 7 ngày:</span>
-                                        <span className="font-medium text-foreground">{project.stats?.last7DaysFiles || 0} files</span>
-                                    </div>
-                                    <div className="flex items-center justify-between pt-2 border-t mt-1">
-                                        <div className="flex items-center gap-1">
-                                            <span>Lần sync gần nhất:</span>
-                                        </div>
-                                        <span>{formatDate(project.lastSyncTimestamp)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-muted-foreground">Kết quả lần sync gần nhất:</span>
-                                        <span className={`font-medium ${project.lastSyncStatus === 'success' ? 'text-green-600' :
-                                            project.lastSyncStatus === 'error' ? 'text-destructive' :
-                                                project.lastSyncStatus === 'interrupted' ? 'text-orange-500' :
-                                                    project.lastSyncStatus === 'running' ? 'text-blue-500' : ''
-                                            }`}>
-                                            {
-                                                project.lastSyncStatus === 'success' ? 'Thành công' :
-                                                    project.lastSyncStatus === 'error' ? 'Lỗi' :
-                                                        project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' :
-                                                            project.lastSyncStatus === 'running' ? 'Đang sync...' :
-                                                                project.lastSyncStatus || '-'
-                                            }
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-muted-foreground">Lần sync thành công gần nhất:</span>
-                                        <span>{formatDate(project.lastSuccessSyncTimestamp || null)}</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-muted-foreground">Lần sync tiếp theo sẽ từ:</span>
-                                        <span>{formatDate(project.nextSyncTimestamp || null)}</span>
-                                    </div>
-
-                                </div>
-
-                                {/* Actions */}
-                                {isAdmin && (
-                                <div className="flex gap-2 pt-1">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="flex-1 gap-1"
-                                        onClick={() => handleManualSyncConfirmation(() => handleSync(project.id))}
-                                        disabled={syncingId === project.id || project.status === 'paused' || project.isRunning === true}
-                                    >
-                                        {syncingId === project.id ? (
-                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                        ) : (
-                                            <RefreshCw className="w-3.5 h-3.5" />
-                                        )}
-                                        Sync
-                                    </Button>
-                                    {project.isRunning === true && (
-                                        <Button
-                                            variant="destructive"
-                                            size="sm"
-                                            className="gap-1"
-                                            onClick={() => handleStopSync(project.id)}
-                                            disabled={stopSyncMutation.isPending}
-                                        >
-                                            {stopSyncMutation.isPending ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            ) : (
-                                                <Square className="w-3.5 h-3.5" />
-                                            )}
-                                            Dừng
-                                        </Button>
-                                    )}
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleToggleStatus(project)}
-                                        title={project.status === 'active' ? 'Tạm dừng' : 'Kích hoạt'}
-                                        disabled={project.isRunning === true}
-                                    >
-                                        {project.status === 'active' ? (
-                                            <Pause className="w-3.5 h-3.5" />
-                                        ) : (
-                                            <Play className="w-3.5 h-3.5" />
-                                        )}
-                                        Pause
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleOpenEdit(project)}
-                                        disabled={project.isRunning === true}
-                                    >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleReset(project.id)}
-                                        title="Reset lịch sử sync"
-                                        disabled={project.isRunning === true}
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5" />
-                                        Reset
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleDelete(project.id)}
-                                        className="text-destructive hover:text-destructive"
-                                        disabled={project.isRunning === true}
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
-                                </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
+                <ProjectCardGrid {...viewProps} />
             ) : (
-                // LIST VIEW (Table)
-                <div className="rounded-md border bg-card">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[300px]">Dự án</TableHead>
-                                {/* <TableHead>Source / Destination</TableHead> */}
-                                <TableHead className="w-[130px]">Sync từ</TableHead>
-                                <TableHead className="w-[120px]">Hôm nay</TableHead>
-                                <TableHead className="w-[120px]">7 ngày</TableHead>
-                                <TableHead className="w-[150px]">Sync gần nhất</TableHead>
-                                <TableHead className="w-[120px]">Kết quả</TableHead>
-                                <TableHead className="w-[200px]">Thành công gần nhất</TableHead>
-                                <TableHead className="w-[150px]">Sync tiếp theo</TableHead>
-                                {isAdmin && <TableHead className="w-[100px] text-right">Thao tác</TableHead>}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {filteredProjects.map((project) => (
-                                <TableRow key={project.id}>
-                                    <TableCell>
-                                        <div className="font-medium">{project.name}</div>
-                                    </TableCell>
-                                    {/* <TableCell>
-                                        <div className="flex flex-col gap-1 text-xs max-w-[200px]">
-                                            <a href={project.sourceFolderLink} target="_blank" className="flex items-center gap-1 text-muted-foreground hover:text-primary truncate">
-                                                <span className="font-semibold">Nguồn:</span> {project.sourceFolderId}
-                                                <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                            <a href={project.destFolderLink} target="_blank" className="flex items-center gap-1 text-muted-foreground hover:text-primary truncate">
-                                                <span className="font-semibold">Đích:</span> {project.destFolderId}
-                                                <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                        </div>
-                                    </TableCell> */}
-                                    <TableCell>
-                                        {project.syncStartDate ? (
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                                <Calendar className="w-3 h-3" />
-                                                {formatDateShort(project.syncStartDate)}
-                                            </div>
-                                        ) : (
-                                            <span className="text-xs text-muted-foreground">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-xs">
-                                        {project.stats?.todayFiles || 0} files
-                                    </TableCell>
-                                    <TableCell className="text-xs">
-                                        {project.stats?.last7DaysFiles || 0} files
-                                    </TableCell>
-                                    <TableCell className="text-xs whitespace-nowrap">
-                                        {formatDate(project.lastSyncTimestamp)}
-                                    </TableCell>
-                                    <TableCell className="text-xs whitespace-nowrap">
-                                        <span className={`font-medium ${project.lastSyncStatus === 'success' ? 'text-green-600' :
-                                            project.lastSyncStatus === 'error' ? 'text-destructive' :
-                                                project.lastSyncStatus === 'interrupted' ? 'text-orange-500' :
-                                                    project.lastSyncStatus === 'running' ? 'text-blue-500' : ''
-                                            }`}>
-                                            {
-                                                project.lastSyncStatus === 'success' ? 'Thành công' :
-                                                    project.lastSyncStatus === 'error' ? 'Lỗi' :
-                                                        project.lastSyncStatus === 'interrupted' ? 'Gián đoạn' :
-                                                            project.lastSyncStatus === 'running' ? 'Đang sync...' :
-                                                                project.lastSyncStatus || '-'
-                                            }
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-xs whitespace-nowrap">
-                                        {formatDate(project.lastSuccessSyncTimestamp || null)}
-                                    </TableCell>
-                                    <TableCell className="text-xs whitespace-nowrap">
-                                        {formatDate(project.nextSyncTimestamp || null)}
-                                    </TableCell>
-                                    {isAdmin && (
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() => handleManualSyncConfirmation(() => handleSync(project.id))}
-                                                disabled={syncingId === project.id || project.status === 'paused' || project.isRunning === true}
-                                                title="Sync"
-                                            >
-                                                {syncingId === project.id ? (
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                ) : (
-                                                    <RefreshCw className="w-4 h-4" />
-                                                )}
-                                            </Button>
-                                            {project.isRunning === true && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-destructive hover:text-destructive"
-                                                    onClick={() => handleStopSync(project.id)}
-                                                    disabled={stopSyncMutation.isPending}
-                                                    title="Dừng Sync"
-                                                >
-                                                    {stopSyncMutation.isPending ? (
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        <Square className="w-4 h-4" />
-                                                    )}
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() => handleOpenEdit(project)}
-                                                title="Chỉnh sửa"
-                                                disabled={project.isRunning === true}
-                                            >
-                                                <Pencil className="w-4 h-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() => handleReset(project.id)}
-                                                title="Reset lịch sử sync"
-                                                disabled={project.isRunning === true}
-                                            >
-                                                <RotateCcw className="w-4 h-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                                onClick={() => handleDelete(project.id)}
-                                                title="Xóa"
-                                                disabled={project.isRunning === true}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                    )}
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
+                <ProjectListTable {...viewProps} />
             )}
 
+            {/* Modals & Dialogs */}
             <StopSyncModal
                 isOpen={stopModal.isOpen}
                 onClose={(stopped) => {
                     setStopModal(prev => ({ ...prev, isOpen: false }));
-                    if (stopped) {
-                        refetch();
-                    }
+                    if (stopped) refetch();
                 }}
                 projectId={stopModal.projectId}
                 projectName={stopModal.projectName}
             />
 
-            {/* Sync Result Dialog */}
-            <Dialog open={syncResult.open} onOpenChange={(open) => setSyncResult(prev => ({ ...prev, open }))}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            {syncResult.success ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-500" />
-                            ) : (
-                                <XCircle className="w-5 h-5 text-red-500" />
-                            )}
-                            {syncResult.success ? 'Sync hoàn tất' : 'Sync thất bại'}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {syncResult.message}
-                        </DialogDescription>
-                    </DialogHeader>
+            <SyncResultDialog
+                syncResult={syncResult}
+                onClose={() => setSyncResult(prev => ({ ...prev, open: false }))}
+                onViewDetails={() => {
+                    setSyncResult(prev => ({ ...prev, open: false }));
+                    navigate('/logs');
+                }}
+            />
 
-                    {syncResult.stats && (
-                        <div className="grid grid-cols-2 gap-4 py-4">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-sm text-muted-foreground">Files synced</span>
-                                <span className="text-2xl font-bold">{syncResult.stats.filesCount}</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-sm text-muted-foreground">Total Size</span>
-                                <span className="text-2xl font-bold">{formatBytes(syncResult.stats.totalSizeSynced)}</span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-sm text-muted-foreground">Errors</span>
-                                <span className={`text-2xl font-bold ${syncResult.stats.failedCount > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                                    {syncResult.stats.failedCount}
-                                </span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-sm text-muted-foreground">Status</span>
-                                <Badge variant={syncResult.stats.status === 'success' ? 'default' : 'destructive'} className="w-fit">
-                                    {syncResult.stats.status}
-                                </Badge>
-                            </div>
-                        </div>
-                    )}
+            <PassphraseDialog
+                open={isPassphraseOpen}
+                onOpenChange={setIsPassphraseOpen}
+                onUnlock={unlockAdmin}
+            />
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setSyncResult(prev => ({ ...prev, open: false }))}>
-                            Đóng
-                        </Button>
-                        <Button onClick={() => {
-                            setSyncResult(prev => ({ ...prev, open: false }));
-                            navigate('/logs');
-                        }}>
-                            Xem chi tiết
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ProjectFormDialog
+                open={isCreateOpen}
+                onOpenChange={(open) => {
+                    setIsCreateOpen(open);
+                    if (!open) setEditingProject(null);
+                }}
+                editingProject={editingProject}
+                onSubmit={handleSubmit}
+                isPending={createProjectMutation.isPending || updateProjectMutation.isPending}
+            />
 
-            {/* Admin Passphrase Dialog */}
-            <Dialog open={isPassphraseOpen} onOpenChange={setIsPassphraseOpen}>
-                <DialogContent className="sm:max-w-[400px]">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Lock className="w-5 h-5 text-primary" />
-                            Mở khóa Quản trị
-                        </DialogTitle>
-                        <DialogDescription>
-                            Nhập mã quản trị để có thể tạo, sửa, xóa dự án.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="passphrase">Mã quản trị</Label>
-                            <Input
-                                id="passphrase"
-                                type="password"
-                                placeholder="Nhập mã..."
-                                value={passphrase}
-                                onChange={(e) => { setPassphrase(e.target.value); setPassphraseError(false); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
-                                className={passphraseError ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                                autoFocus
-                            />
-                            {passphraseError && (
-                                <p className="text-xs text-red-500 flex items-center gap-1">
-                                    <XCircle className="w-3 h-3" />
-                                    Mã không đúng
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsPassphraseOpen(false)}>Hủy</Button>
-                        <Button onClick={handleUnlock} disabled={!passphrase}>
-                            <LockOpen className="w-4 h-4 mr-2" />
-                            Mở khóa
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Import CSV Dialog */}
-            <Dialog open={isImportOpen} onOpenChange={(open) => {
-                if (!open && importProgress.status === 'importing') return; // prevent closing during import
-                setIsImportOpen(open);
-            }}>
-                <DialogContent className="sm:max-w-[750px] max-h-[85vh] flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <FileSpreadsheet className="w-5 h-5 text-primary" />
-                            Import dự án từ CSV
-                        </DialogTitle>
-                        <DialogDescription>
-                            Tải lên file CSV gồm 3 cột: <strong>Tên Dự án</strong>, <strong>Folder From</strong>, <strong>Folder To</strong>.
-                            Chọn ngày bắt đầu sync và xác nhận tạo.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="flex-1 overflow-y-auto space-y-4 py-4">
-                        {/* Step 1: File Upload */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium">1. Chọn file CSV</Label>
-                            <div
-                                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all duration-200"
-                                onClick={() => fileInputRef.current?.click()}
-                            >
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".csv"
-                                    className="hidden"
-                                    onChange={handleImportFileSelect}
-                                />
-                                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                                <p className="text-sm text-muted-foreground">Click để chọn file CSV</p>
-                                <p className="text-xs text-muted-foreground/60 mt-1">Hỗ trợ file .csv</p>
-                            </div>
-                        </div>
-
-                        {/* Preview Table */}
-                        {importRows.length > 0 && (
-                            <>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-sm font-medium">2. Xem trước ({importRows.length} dự án)</Label>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {importRows.length} dự án sẽ được tạo
-                                        </Badge>
-                                    </div>
-                                    <div className="rounded-md border max-h-[280px] overflow-y-auto">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead className="w-[40px] text-center">#</TableHead>
-                                                    <TableHead>Tên dự án</TableHead>
-                                                    <TableHead className="w-[100px]">Source</TableHead>
-                                                    <TableHead className="w-[100px]">Dest</TableHead>
-                                                    <TableHead className="w-[50px]"></TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {importRows.map((row, idx) => (
-                                                    <TableRow key={idx}>
-                                                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
-                                                        <TableCell className="text-sm font-medium max-w-[250px] truncate">{row.name}</TableCell>
-                                                        <TableCell>
-                                                            {row.sourceFolderLink ? (
-                                                                <a href={row.sourceFolderLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
-                                                                    Link <ExternalLink className="w-3 h-3" />
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground">—</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {row.destFolderLink ? (
-                                                                <a href={row.destFolderLink} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
-                                                                    Link <ExternalLink className="w-3 h-3" />
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground">—</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {importProgress.status === 'idle' && (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                                                                    onClick={() => handleRemoveImportRow(idx)}
-                                                                >
-                                                                    <XCircle className="w-3.5 h-3.5" />
-                                                                </Button>
-                                                            )}
-                                                            {importProgress.status !== 'idle' && idx < importProgress.current && (
-                                                                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                                                            )}
-                                                            {importProgress.status === 'importing' && idx === importProgress.current && (
-                                                                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                                            )}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </div>
-
-                                {/* Step 2: Sync Start Date */}
-                                <div className="space-y-2">
-                                    <Label className="text-sm font-medium flex items-center gap-2">
-                                        3. Ngày bắt đầu sync
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger>
-                                                    <AlertCircle className="w-3.5 h-3.5 text-muted-foreground" />
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p className="max-w-xs">Tất cả dự án import sẽ dùng chung ngày bắt đầu sync này.</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </Label>
-                                    <div className="relative max-w-[220px]">
-                                        <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                        <Input
-                                            type="date"
-                                            className="pl-9"
-                                            value={importSyncDate}
-                                            onChange={(e) => setImportSyncDate(e.target.value)}
-                                            disabled={importProgress.status !== 'idle'}
-                                        />
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Progress & Results */}
-                        {importProgress.status === 'importing' && (
-                            <div className="space-y-2 p-4 rounded-lg bg-muted/30 border">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="font-medium flex items-center gap-2">
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Đang import...
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                        {importProgress.current} / {importProgress.total}
-                                    </span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                                    <div
-                                        className="bg-primary h-full rounded-full transition-all duration-300"
-                                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        {importProgress.status === 'done' && (
-                            <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
-                                <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                                <div>
-                                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                                        Import thành công {importProgress.total} dự án!
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        {importProgress.status === 'error' && (
-                            <div className="space-y-2">
-                                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
-                                    <XOctagon className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                                            Import hoàn tất với {importProgress.errors.length} lỗi
-                                        </p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Đã tạo thành công {importProgress.total - importProgress.errors.length} / {importProgress.total} dự án.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="max-h-[100px] overflow-y-auto text-xs space-y-1 pl-2">
-                                    {importProgress.errors.map((err, i) => (
-                                        <p key={i} className="text-destructive">• {err}</p>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter className="gap-2 sm:gap-0">
-                        {importProgress.status === 'done' || importProgress.status === 'error' ? (
-                            <Button onClick={() => setIsImportOpen(false)}>
-                                Đóng
-                            </Button>
-                        ) : (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setIsImportOpen(false)}
-                                    disabled={importProgress.status === 'importing'}
-                                >
-                                    Hủy
-                                </Button>
-                                <Button
-                                    onClick={handleImportConfirm}
-                                    disabled={importRows.length === 0 || importProgress.status === 'importing'}
-                                    className="gap-2"
-                                >
-                                    {importProgress.status === 'importing' ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                            Đang import...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Upload className="w-4 h-4" />
-                                            Bắt đầu Import ({importRows.length})
-                                        </>
-                                    )}
-                                </Button>
-                            </>
-                        )}
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ImportCsvDialog
+                open={isImportOpen}
+                onOpenChange={setIsImportOpen}
+                onCreateProject={handleCreateProjectForImport}
+            />
         </div>
     );
 }
